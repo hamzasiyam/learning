@@ -1,0 +1,1182 @@
+<header class="header border-bottom"></header>
+<div class="bg-primary py-2 text-white">
+    <div class="container text-center text-md-end">
+        <a href="https://www.instagram.com/jclibrarynj/" class="text-white text-decoration-none me-3" title="Instagram">
+            <img src="https://www.jclibrary.org/wp-content/themes/jersey-city-free-public-library/dist/images/icons/instagram-filled.svg"
+                title="Instagram Icon" />
+        </a>
+        <a href="https://www.facebook.com/JCFPLnj/" class="text-white text-decoration-none me-3" title="Facebook">
+            <img src="https://www.jclibrary.org/wp-content/themes/jersey-city-free-public-library/dist/images/icons/facebook-rect.svg"
+                title="Facebook Icon" />
+        </a>
+        <a href="https://twitter.com/jcfpl_nj" class="text-white text-decoration-none me-3" title="Twitter">
+            <img src="https://www.jclibrary.org/wp-content/themes/jersey-city-free-public-library/dist/images/icons/twitter-bird.svg"
+                title="Twitter Icon" />
+        </a>
+        <a href="http://www.youtube.com/user/jclibrarynj" class="text-white text-decoration-none me-3" title="Youtube">
+            <img src="https://www.jclibrary.org/wp-content/themes/jersey-city-free-public-library/dist/images/icons/logo-youtube-outline.svg"
+                title="Youtube Icon" />
+        </a>
+        <span class="me-2">
+            <a href="https://www.tiktok.com/@jerseycitypubliclibrary" class="text-white text-decoration-none me-3"
+                title="TikTok">
+                <img src="https://www.jclibrary.org/wp-content/themes/jersey-city-free-public-library/dist/images/icons/tiktok-logo.svg"
+                    title="TikTok Icon" />
+            </a>
+            |
+        </span>
+        <div class="dropdown d-inline-block">
+            <button class="appearance-none border-0 py-0 pr-0 bg-transparent text-white small dropdown-toggle"
+                type="button" id="translateDropDown" aria-expanded="false">
+                <img src="https://www.jclibrary.org/wp-content/themes/jersey-city-free-public-library/dist/images/icons/earth.svg"
+                    title="Globe Icon" class="me-1" />
+                Language
+            </button>
+            <div class="dropdown-menu dropdown-menu-end" aria-labelledby="translateDropDown">
+                <form class="px-2">
+                    <div id="google_translate_element"></div>
+                    <script>
+                        function googleTranslateElementInit() {
+                            new google.translate.TranslateElement(
+                                {
+                                    pageLanguage: "en",
+                                },
+                                "google_translate_element"
+                            );
+                        }
+
+                        document.addEventListener("DOMContentLoaded", function () {
+                            const translateButton =
+                                document.getElementById("translateDropDown");
+                            const dropdownMenu = translateButton.nextElementSibling;
+
+                            translateButton.addEventListener("click", function () {
+                                dropdownMenu.classList.toggle("show");
+                            });
+
+                            window.addEventListener("click", function (event) {
+                                if (
+                                    !translateButton.contains(event.target) &&
+                                    !dropdownMenu.contains(event.target)
+                                ) {
+                                    dropdownMenu.classList.remove("show");
+                                }
+                            });
+                        });
+                    </script>
+                    <script defer async
+                        src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container">
+    <div class="d-md-flex flex-grow-1">
+        <div class="position-relative d-none d-md-block z-1000">
+            <a href="https://www.jclibrary.org/" class="site-logo">
+                <img src="https://www.jclibrary.org/wp-content/uploads/2024/03/cropped-JCFPL-Logo-Navy_transparent-1.png"
+                    width="789" height="825" alt="Logo Mark of the JCFPL" srcset="
+                https://www.jclibrary.org/wp-content/uploads/2024/03/cropped-JCFPL-Logo-Navy_transparent-1.png         789w,
+                https://www.jclibrary.org/wp-content/uploads/2024/03/cropped-JCFPL-Logo-Navy_transparent-1-287x300.png 287w,
+                https://www.jclibrary.org/wp-content/uploads/2024/03/cropped-JCFPL-Logo-Navy_transparent-1-768x803.png 768w
+              " sizes="(max-width: 789px) 100vw, 789px" decoding="async" />
+            </a>
+        </div>
+        <!-- start -->
+        <div class="d-md-flex align-items-center justify-content-end secondary-header-wrapper w-100">
+            <div class="d-block d-md-flex align-items-center flex-grow-1">
+                <span class="hours-wrapper d-none d-md-block me-md-3 mb-1 mt-2 flex-grow-1">
+                    <div class="dropdown position-relative small show">
+                        <a href="#SelectBranch"
+                            class="text-uppercase dropdown-toggle dropdown-toggle--hours text-decoration-none d-block position-absolute z-4 w-100"
+                            role="button" id="dropdownMenuLink" data-bs-toggle="dropdown" aria-haspopup="true"
+                            aria-expanded="false">
+                            <span class="dropdown-toggle__label text-uppercase small text-transparent sr-only">
+                                Select Branch
+                            </span>
+                        </a>
+                        <!-- Branches in the Dropdown -->
+                        <nav class="dropdown-menu dropdown-menu--branches" aria-labelledby="dropdownMenuButton">
+                            <div class="nav nav-tabs b-0 p-0 m-0" id="nav-tab" role="tablist">
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch5918-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/communipaw/" role="tab">
+                                    Communipaw Branch
+                                </a>
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch8180-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/creative-arts-center/"
+                                    role="tab">
+                                    JCFPL Creative Arts Center
+                                </a>
+
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch62-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/earl-a-morgan-branch/"
+                                    role="tab">
+                                    Earl A. Morgan Branch
+                                </a>
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch364-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/five-corners-branch/"
+                                    role="tab">
+                                    Five Corners Branch
+                                </a>
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch366-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/glenn-d-cunningham/"
+                                    role="tab">
+                                    Glenn D. Cunningham
+                                </a>
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch368-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/heights-branch/"
+                                    role="tab">
+                                    Heights Branch (Temporarily Closed)
+                                </a>
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch377-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/lafayette-branch/"
+                                    role="tab">
+                                    Lafayette Branch (Temporarily Closed)
+                                </a>
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch379-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/marion-branch/"
+                                    role="tab">
+                                    Marion Branch
+                                </a>
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch370-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/miller-branch/"
+                                    role="tab">
+                                    Miller Branch
+                                </a>
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch373-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/pavonia-branch/"
+                                    role="tab">
+                                    Pavonia Branch
+                                </a>
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch375-tab"
+                                    data-bs-toggle="tab"
+                                    href="https://www.jclibrary.org/branch/priscilla-gardner-main-library-departments/"
+                                    role="tab">
+                                    Priscilla Gardner Main Library &#038; Departments
+                                </a>
+                                <a class="dropdown-item dropdown-item--radio-option notranslate" id="nav-branch381-tab"
+                                    data-bs-toggle="tab" href="https://www.jclibrary.org/branch/west-bergen-branch/"
+                                    role="tab">
+                                    West Bergen Branch
+                                </a>
+                            </div>
+                        </nav>
+                    </div>
+                    <!-- View hours-->
+                    <div class="tab-content d-inline-block tab-content--branches">
+                        <div class="text-uppercase small fw-bold">
+                            Select Branch
+                            <i class="fa fa-chevron-down ms-1"> </i>
+                        </div>
+                        <a href="https://www.jclibrary.org/about/branch-hours-locations/"
+                            class="text-maroon small ml-1 position-relative z-5">
+                            <span class="small"> View Hours & Locations </span>
+                        </a>
+                    </div>
+                </span>
+                <ul
+                    class="menu-secondary list-unstyled d-flex d-md-block d-lg-flex ms-lg-2 mt-2 mt-md-0 mb-0 justify-content-center flex-grow-1">
+                    <li class="me-3 me-md-0 me-lg-4 mb-md-1 mb-lg-0">
+                        <a href="https://jcfplfoundation.printful.me/" target="_blank"
+                            class="text-decoration-none fw-bold text-dark small">
+                            <img src="https://jclibrary.org/wp-content/themes/jersey-city-free-public-library/dist/images/icons/store.svg"
+                                class="me-2 me-md-1 me-lg-2 menu-icon" alt="Store Icon">
+                            Store
+                        </a>
+                    </li>
+                    <li class="me-3 me-md-0 me-lg-4 mb-md-1 mb-lg-0">
+                        <a href="https://jepl.ent.sirsi.net/client/en_US/default/"
+                            class="text-decoration-none fw-bold text-dark small">
+                            <img src="https://jclibrary.org/wp-content/themes/jersey-city-free-public-library/dist/images/icons/account.svg"
+                                class="me-2 me-md-1 me-lg-2 menu-icon" alt="Account User Icon">My Account
+                        </a>
+                    </li>
+                    <li class="me-2 me-md-0 me-lg-4">
+                        <a href="https://jepl.ent.sirsi.net/client/en_US/default/"
+                            class="text-decoration-none fw-bold text-dark small">
+                            <img src="https://jclibrary.org/wp-content/themes/jersey-city-free-public-library/dist/images/icons/book.svg"
+                                class="me-2 me-md-1 me-lg-2 menu-icon" alt="Catalog Icon"> Catalog
+                        </a>
+                    </li>
+
+
+                    <li class="d-md-none ms-3"><a href="https://jclibrary.org/about/branch-hours-locations/"
+                            class="text-decoration-none fw-bold text-dark small"><img
+                                src="https://jclibrary.org/wp-content/themes/jersey-city-free-public-library/dist/images/icons/map-marker-circle.svg"
+                                class="me-2" alt="Map Marker Icon"> View Hours &amp; Locations</a></li>
+
+                </ul>
+                <div class="mt-3 mb-2 ms-md-3 flex-grow-1">
+                    <form class="searchform" method="POST" action="https://www.jclibrary.org/wp-admin/admin-post.php">
+                        <div class="position-relative">
+                            <input type="text" class="searchform__search form-control form-control--rounded py-1 pe-5"
+                                type="text" name="s" id="s" placeholder="Search..." value="" />
+                            <button type="submit"
+                                class="searchform__submit bg-transparent border-0 p-0 pe-3 h-100 position-absolute"
+                                title="Search">
+                                <i class="fa fa-search text-muted"> </i>
+                            </button>
+                        </div>
+                        <ul class="list-unstyled list-inline mt-1 text-end mb-0">
+                            <li class="list-inline-item">
+                                <input class="button_catalog radio radio--styled" type="radio" name="search_select"
+                                    value="catalog" id="button_catalog" checked />
+                                <label for="button_catalog"> Catalog </label>
+                            </li>
+                            <li class="list-inline-item ms-2">
+                                <input class="button_site radio radio--styled" type="radio" name="search_select"
+                                    value="site" id="button_site" />
+                                <label for="button_site"> Website </label>
+                            </li>
+                            <li class="list-inline-item ms-2">
+                                <input class="button_site radio radio--styled" type="radio" name="search_select"
+                                    value="events" id="button_events">
+                                <label for="button_events"> Events</label>
+                            </li>
+                        </ul>
+                        <input type="hidden" name="action" value="libby_search" />
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<nav class="border-top bg-white border-top">
+    <div class="container">
+        <div class="main-menu-wrapper">
+            <div id="mega-menu-wrap-primary_navigation" class="mega-menu-wrap">
+                <div class="mega-menu-toggle">
+                    <div class="mega-toggle-blocks-left">
+                        <div class="mega-toggle-block mega-logo-block mega-toggle-block-1" id="mega-toggle-block-1">
+                            <a class="mega-menu-logo" href="//www.jclibrary.org" target="_self">
+                                <img class="mega-menu-logo"
+                                    src="https://i0.wp.com/www.jclibrary.org/wp-content/uploads/2024/03/JCFPL-Mobile-Logo-1.png?fit=1939%2C756&amp;ssl=1"
+                                    alt='Logo that reads "Jersey City Free Public Library"' />
+                            </a>
+                        </div>
+                    </div>
+                    <div class="mega-toggle-blocks-center"></div>
+                    <div class="mega-toggle-blocks-right">
+                        <div class="mega-toggle-block mega-menu-toggle-animated-block mega-toggle-block-2"
+                            id="mega-toggle-block-2">
+                            <button aria-label="Toggle Menu" class="mega-toggle-animated mega-toggle-animated-slider"
+                                type="button" aria-expanded="false">
+                                <span class="mega-toggle-animated-box">
+                                    <span class="mega-toggle-animated-inner"></span>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <ul id="mega-menu-primary_navigation" class="mega-menu max-mega-menu mega-menu-horizontal mega-no-js"
+                    data-event="click" data-effect="fade_up" data-effect-speed="200" data-effect-mobile="disabled"
+                    data-effect-speed-mobile="0" data-panel-width=".container" data-mobile-force-width="body"
+                    data-second-click="go" data-document-click="collapse" data-vertical-behaviour="standard"
+                    data-breakpoint="768" data-unbind="true" data-mobile-state="collapse_all"
+                    data-hover-intent-timeout="300" data-hover-intent-interval="100" data-overlay-desktop="false"
+                    data-overlay-mobile="false">
+                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-megamenu mega-align-bottom-left mega-menu-grid mega-menu-item-30"
+                        id="mega-menu-item-30">
+                        <a class="mega-menu-link" href="#" aria-haspopup="true" aria-expanded="false" tabindex="0">About
+                            & Locations<span class="mega-indicator" data-has-click-event="true"></span></a>
+                        <ul class="mega-sub-menu" style="width: 1320px; left: -262px;">
+                            <li class="mega-menu-row" id="mega-menu-8833-0">
+                                <ul class="mega-sub-menu">
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-8833-0-0">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-item-167"
+                                                id="mega-menu-item-167"><a class="mega-menu-link"
+                                                    href="https://jclibrary.org/about/branch-hours-locations/">Locations<span
+                                                        class="mega-indicator" aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-collapse-children mega-menu-item-168"
+                                                        id="mega-menu-item-168"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/about/branch-hours-locations/"
+                                                            aria-expanded="false">All Hours &amp; Locations
+                                                            (Expand)<span class="mega-indicator"
+                                                                aria-hidden="true"></span></a>
+                                                        <ul class="mega-sub-menu">
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-branch mega-menu-item-414"
+                                                                id="mega-menu-item-414"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/priscilla-gardner-main-library-departments/">Priscilla
+                                                                    Gardner Main Library</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-branch mega-menu-item-412"
+                                                                id="mega-menu-item-412"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/marion-branch/">Marion
+                                                                    Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-branch mega-menu-item-413"
+                                                                id="mega-menu-item-413"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/lafayette-branch/">Lafayette
+                                                                    Branch (Temporarily Closed)</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-branch mega-menu-item-411"
+                                                                id="mega-menu-item-411"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/west-bergen-branch/">West
+                                                                    Bergen Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-branch mega-menu-item-420"
+                                                                id="mega-menu-item-420"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/earl-a-morgan-branch/">Earl
+                                                                    A. Morgan Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-branch mega-menu-item-419"
+                                                                id="mega-menu-item-419"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/five-corners-branch/">Five
+                                                                    Corners Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-branch mega-menu-item-418"
+                                                                id="mega-menu-item-418"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/glenn-d-cunningham/">Glenn
+                                                                    D. Cunningham</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-branch mega-menu-item-417"
+                                                                id="mega-menu-item-417"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/heights-branch/">Heights
+                                                                    Branch (Temporarily Closed)</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-branch mega-menu-item-416"
+                                                                id="mega-menu-item-416"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/miller-branch/">Miller
+                                                                    Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-branch mega-menu-item-415"
+                                                                id="mega-menu-item-415"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/pavonia-branch/">Pavonia
+                                                                    Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-5965"
+                                                                id="mega-menu-item-5965"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/communipaw/">Communipaw
+                                                                    Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8189"
+                                                                id="mega-menu-item-8189"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/creative-arts-center/">JCFPL
+                                                                    Creative Arts Center</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-10888"
+                                                                id="mega-menu-item-10888"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/jcfpl-learning-center-at-394-central-ave/">Learning
+                                                                    Center at 394 Central Ave</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-10931"
+                                                                id="mega-menu-item-10931"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/branch/pgml-learning-center-department/">Learning
+                                                                    Center at PGML</a></li>
+                                                        </ul>
+                                                    </li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-10587"
+                                                        id="mega-menu-item-10587"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/bookmobile/">Bookmobile</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-4796"
+                                                        id="mega-menu-item-4796"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/pop-up-library/">Pop-up
+                                                            Library</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-10984"
+                                                        id="mega-menu-item-10984"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/jersey-city-free-public-library-outreach-branch/">Outreach
+                                                            Branch</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-8833-0-1">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-item-165"
+                                                id="mega-menu-item-165"><a class="mega-menu-link"
+                                                    href="https://jclibrary.org/about/">About the Library<span
+                                                        class="mega-indicator" aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-166"
+                                                        id="mega-menu-item-166"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/about/">About</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-4826"
+                                                        id="mega-menu-item-4826"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/purpose-commitments/">Purpose
+                                                            &amp; Commitments</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-10497"
+                                                        id="mega-menu-item-10497"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/our-history/">Our History</a>
+                                                    </li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-2988"
+                                                        id="mega-menu-item-2988"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/yourlibrary/">Your Library</a>
+                                                    </li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-225"
+                                                        id="mega-menu-item-225"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/about/employment-opportunities/">Employment
+                                                            Opportunities</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-224"
+                                                        id="mega-menu-item-224"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/about/donate/">Donations</a>
+                                                    </li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-9100"
+                                                        id="mega-menu-item-9100"><a class="mega-menu-link"
+                                                            href="https://stats.uptimerobot.com/gAhwzX5NrK">Website
+                                                            Status Page</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-post mega-menu-item-10227"
+                                                        id="mega-menu-item-10227"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/download-the-jcfpl-app-today/">Download
+                                                            the JCFPL App</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-10730"
+                                                        id="mega-menu-item-10730"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/opra-request-policy/">OPRA
+                                                            Request Policy</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-10813"
+                                                        id="mega-menu-item-10813"><a class="mega-menu-link"
+                                                            href="https://jcfplfoundation.printful.me/">Store</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-8833-0-2">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-item-8787"
+                                                id="mega-menu-item-8787"><a class="mega-menu-link"
+                                                    href="https://www.jclibrary.org/about/leadership/">Leadership<span
+                                                        class="mega-indicator" data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-1138"
+                                                        id="mega-menu-item-1138"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/about/leadership/">Leadership</a>
+                                                    </li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-1508"
+                                                        id="mega-menu-item-1508"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/about/board-of-trustees-2/">Board
+                                                            of Trustees</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-227"
+                                                        id="mega-menu-item-227"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/about/library-foundation/">Library
+                                                            Foundation</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="mega-menu-row" id="mega-menu-8833-1">
+                                <ul class="mega-sub-menu">
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-8833-1-0">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-item-8788"
+                                                id="mega-menu-item-8788"><a class="mega-menu-link"
+                                                    href="https://www.jclibrary.org/about/latest-news/">News &amp;
+                                                    Press<span class="mega-indicator"
+                                                        data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-221"
+                                                        id="mega-menu-item-221"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/about/latest-news/">Latest
+                                                            News</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-7964"
+                                                        id="mega-menu-item-7964"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/press-releases/">Press
+                                                            Releases</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-8824"
+                                                        id="mega-menu-item-8824"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/about/subscribe-to-emails-manage-email-subscription/">Email
+                                                            Subscription Center</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-8833-1-1">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-current-menu-item mega-current_page_item mega-menu-item-has-children mega-menu-item-448"
+                                                id="mega-menu-item-448"><a class="mega-menu-link" href="/#"
+                                                    aria-current="page">Special Collections<span class="mega-indicator"
+                                                        data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6930"
+                                                        id="mega-menu-item-6930"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/biblioteca-criolla-jcfpl/">Biblioteca
+                                                            Criolla</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-212"
+                                                        id="mega-menu-item-212"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/resources/new-jersey-room/">New
+                                                            Jersey Room</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-8833-1-2">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-item-229"
+                                                id="mega-menu-item-229"><a class="mega-menu-link"
+                                                    href="https://www.jclibrary.org/about/contact-us/">Contact Us<span
+                                                        class="mega-indicator" data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-3176"
+                                                        id="mega-menu-item-3176"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/about/contact-us/">Contact
+                                                            Us</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-230"
+                                                        id="mega-menu-item-230"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/about/faqs/">FAQs</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-5213"
+                                                        id="mega-menu-item-5213"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/about/feedback-survey/">Leave
+                                                            Feedback</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-megamenu mega-align-bottom-left mega-menu-grid mega-menu-item-5141"
+                        id="mega-menu-item-5141">
+                        <a class="mega-menu-link" href="#" aria-haspopup="true" aria-expanded="false"
+                            tabindex="0">Services
+                            & Resources<span class="mega-indicator" data-has-click-event="true"></span></a>
+                        <ul class="mega-sub-menu" style="width: 1320px; left: -262px;">
+                            <li class="mega-menu-row" id="mega-menu-5141-0">
+                                <ul class="mega-sub-menu">
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-5141-0-0">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-171"
+                                                id="mega-menu-item-171"><a class="mega-menu-link" href="#">Library
+                                                    Services<span class="mega-indicator"
+                                                        data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-174"
+                                                        id="mega-menu-item-174"><a class="mega-menu-link"
+                                                            href="https://jepl.ent.sirsi.net/client/en_US/default/search/patronlogin/https:$002f$002fjepl.ent.sirsi.net$002fclient$002fen_US$002fdefault$002fsearch$002faccount$003f">My
+                                                            Account</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-175"
+                                                        id="mega-menu-item-175"><a class="mega-menu-link"
+                                                            href="https://jepl.ent.sirsi.net/client/en_US/default">Browse
+                                                            Catalog</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-182"
+                                                        id="mega-menu-item-182"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/services/lending-department/">Lending
+                                                            Department</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-3263"
+                                                        id="mega-menu-item-3263"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/services/museum-passes/">Museum
+                                                            Passes</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-9223"
+                                                        id="mega-menu-item-9223"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/rentable-equipment-communipaw/">Rentable
+                                                            Equipment (Communipaw)</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-5141-0-1">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-172"
+                                                id="mega-menu-item-172"><a class="mega-menu-link" href="#">Technology
+                                                    Services<span class="mega-indicator" aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-7094"
+                                                        id="mega-menu-item-7094"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/services/wireless-printing-princh/">Wireless
+                                                            Printing</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-189"
+                                                        id="mega-menu-item-189"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/services/free-wifi/">Free
+                                                            WiFi</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-8270"
+                                                        id="mega-menu-item-8270"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/services/reserve-a-public-computer-at-our-branches/">Reserve
+                                                            a Public Computer at a Branch</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-190"
+                                                        id="mega-menu-item-190"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/services/tech-to-go/">Tech to
+                                                            Go: Laptop &amp; Hotspot Lending Program</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-8484"
+                                                        id="mega-menu-item-8484"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/makerspace-at-the-communipaw-branch-library/">Communipaw
+                                                            Makerspace</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-5141-0-2">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-173"
+                                                id="mega-menu-item-173"><a class="mega-menu-link" href="#">Requests<span
+                                                        class="mega-indicator" data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-4609"
+                                                        id="mega-menu-item-4609"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/services/interlibrary-loan-service/">Interlibrary
+                                                            Loan Service</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-6656"
+                                                        id="mega-menu-item-6656"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/suggest-a-purchase/">Suggest
+                                                            a Purchase</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-183"
+                                                        id="mega-menu-item-183"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/services/information-services/">Information
+                                                            Services</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-5000"
+                                                        id="mega-menu-item-5000"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/submit-request-for-reconsideration-of-a-resource/">Submit
+                                                            Request for Reconsideration of a Resource</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="mega-menu-row" id="mega-menu-5141-1">
+                                <ul class="mega-sub-menu">
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-5141-1-0">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-198"
+                                                id="mega-menu-item-198"><a class="mega-menu-link"
+                                                    href="#">Community<span class="mega-indicator"
+                                                        data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-215"
+                                                        id="mega-menu-item-215"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/resources/employment-assistance/">Employment
+                                                            Assistance</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-4011"
+                                                        id="mega-menu-item-4011"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/digital-equity/">Digital
+                                                            Equity</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-216"
+                                                        id="mega-menu-item-216"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/resources/arts-nonprofits/">Arts
+                                                            &amp; Nonprofits</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-217"
+                                                        id="mega-menu-item-217"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/resources/small-business/">Small
+                                                            Business</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-218"
+                                                        id="mega-menu-item-218"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/resources/tax-forms/">Tax
+                                                            Forms</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-219"
+                                                        id="mega-menu-item-219"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/resources/voter-registration/">Voter
+                                                            Registration</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-1780"
+                                                        id="mega-menu-item-1780"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/services/childrens-services/">Children’s
+                                                            Services</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-2138"
+                                                        id="mega-menu-item-2138"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/services/adults/">Adult
+                                                            Services</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-195"
+                                                        id="mega-menu-item-195"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/services/teens/">Teen
+                                                            Services</a>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-5141-1-1">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-197"
+                                                id="mega-menu-item-197"><a class="mega-menu-link" href="#">Learning<span
+                                                        class="mega-indicator" data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-3950"
+                                                        id="mega-menu-item-3950"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/jcfplscholarship/">Free
+                                                            Google Career Certificate</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-6439"
+                                                        id="mega-menu-item-6439"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/educators-corner/">Educator’s
+                                                            Corner</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8091"
+                                                        id="mega-menu-item-8091"><a class="mega-menu-link"
+                                                            href="https://app.fierocode.com/sign-in?system=10090">Fiero
+                                                            Code (Learn to Code)</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-5141-1-2">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-10622"
+                                                id="mega-menu-item-10622"><a class="mega-menu-link"
+                                                    href="https://jclibrary.org/resources/all-resources-by-subject/">Digital
+                                                    Resources<span class="mega-indicator" aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-200"
+                                                        id="mega-menu-item-200"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/resources/all-resources-by-subject/">All
+                                                            Resources by Subject</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-10394"
+                                                        id="mega-menu-item-10394"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/digital-newspapers/">Digital
+                                                            Newspaper Subscriptions</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-3439"
+                                                        id="mega-menu-item-3439"><a class="mega-menu-link"
+                                                            href="https://libbyapp.com/library/jclibrary">Libby</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-422"
+                                                        id="mega-menu-item-422"><a class="mega-menu-link"
+                                                            href="https://www.hoopladigital.com/">Hoopla</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-423"
+                                                        id="mega-menu-item-423"><a class="mega-menu-link"
+                                                            href="https://www.pressreader.com/">PressReader</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-424"
+                                                        id="mega-menu-item-424"><a class="mega-menu-link"
+                                                            href="https://search.ebscohost.com/login.aspx?authtype=ip,cpid&amp;custid=s9148802&amp;groupid=main&amp;site=rosetstone&amp;return=y">Rosetta
+                                                            Stone</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-425"
+                                                        id="mega-menu-item-425"><a class="mega-menu-link"
+                                                            href="https://link.gale.com/apps/UDEMY?u=jcfpl_ca">Udemy</a>
+                                                    </li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6961"
+                                                        id="mega-menu-item-6961"><a class="mega-menu-link"
+                                                            href="https://thepalaceproject.org/app/">The Palace
+                                                            Project</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-collapse-children mega-menu-item-8821"
+                                                        id="mega-menu-item-8821"><a class="mega-menu-link" href="#"
+                                                            aria-expanded="false">User Guides (Expand)<span
+                                                                class="mega-indicator" aria-hidden="true"></span></a>
+                                                        <ul class="mega-sub-menu">
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8822"
+                                                                id="mega-menu-item-8822"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/wp-content/uploads/2023/11/Rosetta-Stone-Mobile-Logon-11-29-23.pdf">Rosetta
+                                                                    Stone Mobile App Guide</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8823"
+                                                                id="mega-menu-item-8823"><a class="mega-menu-link"
+                                                                    href="https://ww2.jclibrary.org/pguide/">The Palace
+                                                                    Project</a></li>
+                                                        </ul>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-megamenu mega-align-bottom-left mega-menu-grid mega-menu-item-28"
+                        id="mega-menu-item-28">
+                        <a class="mega-menu-link" href="#" aria-haspopup="true" aria-expanded="false"
+                            tabindex="0">Learning
+                            Center<span class="mega-indicator" data-has-click-event="true"></span></a>
+                        <ul class="mega-sub-menu" role="presentation" style="width: 960px; left: -192px;">
+                            <li class="mega-menu-row" id="mega-menu-5073-0">
+                                <ul class="mega-sub-menu" style="--columns:12" role="presentation">
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12"
+                                        style="--columns:12; --span:4" id="mega-menu-5073-0-0">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-8791"
+                                                id="mega-menu-item-8791"><a class="mega-menu-link" href="#">About<span
+                                                        class="mega-indicator" aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-5076"
+                                                        id="mega-menu-item-5076"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/resources/learning-center/">Learning
+                                                            Center</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12"
+                                        style="--columns:12; --span:4" id="mega-menu-5073-0-1">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-8792"
+                                                id="mega-menu-item-8792"><a class="mega-menu-link"
+                                                    href="#">Registration<span class="mega-indicator"
+                                                        aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-5075"
+                                                        id="mega-menu-item-5075"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/resources/learning-center/register-as-a-teacher/">Register
+                                                            as a Teacher</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-5074"
+                                                        id="mega-menu-item-5074"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/resources/learning-center/register-as-a-student/">Register
+                                                            as a Student</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12"
+                                        style="--columns:12; --span:4" id="mega-menu-5073-0-2">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-8793"
+                                                id="mega-menu-item-8793"><a class="mega-menu-link" href="#">Specialty
+                                                    Programs<span class="mega-indicator" aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-7528"
+                                                        id="mega-menu-item-7528"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/resources/learning-center/register-as-a-student-church-world-service/">Register
+                                                            with Church World Service</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="mega-menu-row" id="mega-menu-5073-1">
+                                <ul class="mega-sub-menu" style="--columns:12" role="presentation">
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12"
+                                        style="--columns:12; --span:4" id="mega-menu-5073-1-0">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-item-11266"
+                                                id="mega-menu-item-11266"><a class="mega-menu-link"
+                                                    href="https://jclibrary.org/about-aspire/">Aspire<span
+                                                        class="mega-indicator" aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-11271"
+                                                        id="mega-menu-item-11271"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/about-aspire/">About Aspire</a>
+                                                    </li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-11267"
+                                                        id="mega-menu-item-11267"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/about-aspire/afterschool-education/">Afterschool
+                                                            Education</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-11268"
+                                                        id="mega-menu-item-11268"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/about-aspire/college-prep/">College
+                                                            Prep</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12"
+                                        style="--columns:12; --span:4" id="mega-menu-5073-1-1">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-item-10154"
+                                                id="mega-menu-item-10154"><a class="mega-menu-link"
+                                                    href="https://jclibrary.org/help-your-child-learn-to-read-2/">Help
+                                                    Your Child Learn to Read<span class="mega-indicator"
+                                                        aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-11599"
+                                                        id="mega-menu-item-11599"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/help-your-child-learn-to-read-2/babies-toddlers-0-2-years/">Babies
+                                                            &amp; Toddlers (0-2 Years)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-11600"
+                                                        id="mega-menu-item-11600"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/help-your-child-learn-to-read-2/preschoolers-3-5-years/">Preschoolers
+                                                            (3-5 Years)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-11601"
+                                                        id="mega-menu-item-11601"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/help-your-child-learn-to-read-2/early-elementary-kindergarten-3rd-grade/">Early
+                                                            Elementary (Kindergarten-3rd Grade)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-11602"
+                                                        id="mega-menu-item-11602"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/help-your-child-learn-to-read-2/get-involved/">Get
+                                                            Involved</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-megamenu mega-align-bottom-left mega-menu-grid mega-menu-item-4012"
+                        id="mega-menu-item-4012">
+                        <a class="mega-menu-link" href="#" aria-haspopup="true" aria-expanded="false" tabindex="0">Get
+                            Library Card<span class="mega-indicator" data-has-click-event="true"></span></a>
+                        <ul class="mega-sub-menu" style="width: 1320px; left: -262px;">
+                            <li class="mega-menu-row" id="mega-menu-8832-0">
+                                <ul class="mega-sub-menu">
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-8832-0-0">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-item-6690"
+                                                id="mega-menu-item-6690"><a class="mega-menu-link"
+                                                    href="https://jclibrary.org/get-a-library-card/">Get a Library
+                                                    Card<span class="mega-indicator" aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-11147"
+                                                        id="mega-menu-item-11147"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/get-a-library-card/">Get a
+                                                            Library Card</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6689"
+                                                        id="mega-menu-item-6689"><a class="mega-menu-link"
+                                                            href="https://jepl.ent.sirsi.net/client/en_US/default/search/registration/$N/SYMWS/true">Apply
+                                                            Now (English)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6691"
+                                                        id="mega-menu-item-6691"><a class="mega-menu-link"
+                                                            href="https://jepl.ent.sirsi.net/client/es_CO/default/search/registration/$N/SYMWS/false">Aplica
+                                                            Ahora (Español)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6693"
+                                                        id="mega-menu-item-6693"><a class="mega-menu-link"
+                                                            href="https://jepl.ent.sirsi.net/client/en_US/default/search/patronlogin/https:$002f$002fjepl.ent.sirsi.net$002fclient$002fen_US$002fdefault$002fsearch$002faccount$003f">My
+                                                            Account</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-8832-0-1">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-item-6873"
+                                                id="mega-menu-item-6873"><a class="mega-menu-link"
+                                                    href="https://www.jclibrary.org/get-a-library-card/">Library Card
+                                                    Information<span class="mega-indicator"
+                                                        data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-3505"
+                                                        id="mega-menu-item-3505"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/services/library-card-benefits/">Library
+                                                            Card Benefits</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6762"
+                                                        id="mega-menu-item-6762"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/get-a-library-card/#acceptable-forms">Acceptable
+                                                            Forms of Documentation</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6706"
+                                                        id="mega-menu-item-6706"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/get-a-library-card/#acceptable-forms">Library
+                                                            Card Requirements</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6700"
+                                                        id="mega-menu-item-6700"><a class="mega-menu-link"
+                                                            href="https://www.jclibrary.org/get-a-library-card/#library-card-renewal">Library
+                                                            Card Renewal</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-8832-0-2"></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-megamenu mega-align-bottom-left mega-menu-grid mega-menu-item-981 mega-current-menu-ancestor mega-current-menu-parent mega-current_page_parent mega-current_page_ancestor"
+                        id="mega-menu-item-981">
+                        <a class="mega-menu-link"
+                            href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;inc=0"
+                            aria-haspopup="true" aria-expanded="false" tabindex="0">
+                            Events<span class="mega-indicator" data-has-click-event="true"></span>
+                        </a>
+                        <ul class="mega-sub-menu" style="width: 1320px; left: -262px;">
+                            <li class="mega-menu-row" id="mega-menu-981-0">
+                                <ul class="mega-sub-menu">
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12 mega-menu-clear"
+                                        id="mega-menu-981-0-0">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-6619"
+                                                id="mega-menu-item-6619"><a class="mega-menu-link"
+                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;inc=0">Events
+                                                    Calendar<span class="mega-indicator"
+                                                        data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6620"
+                                                        id="mega-menu-item-6620"><a class="mega-menu-link"
+                                                            href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;inc=0">View
+                                                            All Events</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-collapse-children mega-menu-item-8794"
+                                                        id="mega-menu-item-8794"><a class="mega-menu-link" href="#"
+                                                            aria-expanded="false" data-has-click-event="true">Select a
+                                                            Branch Expand)<span class="mega-indicator"
+                                                                data-has-click-event="true"></span></a>
+                                                        <ul class="mega-sub-menu">
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6615"
+                                                                id="mega-menu-item-6615"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/Main?cid=17419&amp;t=d&amp;d=0000-00-00&amp;cal=17419&amp;inc=0">Priscilla
+                                                                    Gardner Main Library</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6612"
+                                                                id="mega-menu-item-6612"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/Marion?cid=17424&amp;t=d&amp;d=0000-00-00&amp;cal=17424&amp;inc=0">Marion
+                                                                    Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6611"
+                                                                id="mega-menu-item-6611"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/Lafayette?cid=17425&amp;t=d&amp;d=0000-00-00&amp;cal=17425&amp;inc=0">Lafayette
+                                                                    Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6616"
+                                                                id="mega-menu-item-6616"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/WestBergen?cid=17421&amp;t=d&amp;d=0000-00-00&amp;cal=17421&amp;inc=0">West
+                                                                    Bergen Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6607"
+                                                                id="mega-menu-item-6607"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/Morgan?cid=17420&amp;t=d&amp;d=0000-00-00&amp;cal=17420&amp;inc=0">Earl
+                                                                    A. Morgan Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6608"
+                                                                id="mega-menu-item-6608"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/FiveCorners?cid=17430&amp;t=d&amp;d=0000-00-00&amp;cal=17430&amp;inc=0">Five
+                                                                    Corners Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6609"
+                                                                id="mega-menu-item-6609"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/Cunningham?cid=17427&amp;t=d&amp;d=0000-00-00&amp;cal=17427&amp;inc=0">Glenn
+                                                                    D. Cunningham Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6610"
+                                                                id="mega-menu-item-6610"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/Heights?cid=17426&amp;t=d&amp;d=0000-00-00&amp;cal=17426&amp;inc=0">Heights
+                                                                    Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6613"
+                                                                id="mega-menu-item-6613"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/Miller?cid=17423&amp;t=d&amp;d=0000-00-00&amp;cal=17423&amp;inc=0">Miller
+                                                                    Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6614"
+                                                                id="mega-menu-item-6614"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/Pavonia?cid=17422&amp;t=d&amp;d=0000-00-00&amp;cal=17422&amp;inc=0">Pavonia
+                                                                    Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6617"
+                                                                id="mega-menu-item-6617"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/communipaw?cid=19967&amp;t=d&amp;d=0000-00-00&amp;cal=19967&amp;inc=0">Communipaw
+                                                                    Branch</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-7695"
+                                                                id="mega-menu-item-7695"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/creativeartscenter?cid=20079&amp;t=d&amp;d=0000-00-00&amp;cal=20079&amp;inc=0">JCFPL
+                                                                    Creative Arts Center</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-6606"
+                                                                id="mega-menu-item-6606"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/Bookmobile?cid=17432&amp;t=d&amp;d=0000-00-00&amp;cal=17432&amp;inc=0">Bookmobile</a>
+                                                            </li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-9826"
+                                                                id="mega-menu-item-9826"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar?cid=21694&t=d&d=0000-00-00&cal=21694&inc=0">Learning
+                                                                    Center- Central Avenue</a></li>
+                                                        </ul>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12" id="mega-menu-981-0-1">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-6763"
+                                                id="mega-menu-item-6763"><a class="mega-menu-link"
+                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73758&amp;inc=0">Popular
+                                                    Events<span class="mega-indicator"
+                                                        data-has-click-event="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8795"
+                                                        id="mega-menu-item-8795"><a class="mega-menu-link"
+                                                            href="https://jclibrary.libcal.com/calendar/spotlight?cid=20148&amp;t=d&amp;d=0000-00-00&amp;cal=20148&amp;inc=0">Spotlight
+                                                            Events</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8796"
+                                                        id="mega-menu-item-8796"><a class="mega-menu-link"
+                                                            href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;audience=8476&amp;inc=0">Adults
+                                                            (19+)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8802"
+                                                        id="mega-menu-item-8802"><a class="mega-menu-link"
+                                                            href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;audience=8475&amp;inc=0">Children
+                                                            (6-11)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8814"
+                                                        id="mega-menu-item-8814"><a class="mega-menu-link"
+                                                            href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;audience=9994&amp;inc=0">Early
+                                                            Childhood (0-5)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8891"
+                                                        id="mega-menu-item-8891"><a class="mega-menu-link"
+                                                            href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;audience=9993&amp;inc=0">General
+                                                            (All)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8892"
+                                                        id="mega-menu-item-8892"><a class="mega-menu-link"
+                                                            href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;audience=8477&amp;inc=0">Young
+                                                            Adults (12-18)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-collapse-children mega-menu-item-8815"
+                                                        id="mega-menu-item-8815"><a class="mega-menu-link" href="#"
+                                                            aria-expanded="false" data-has-click-event="true">Discover
+                                                            Events by Type (Expand)<span class="mega-indicator"
+                                                                data-has-click-event="true"></span></a>
+                                                        <ul class="mega-sub-menu">
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8798"
+                                                                id="mega-menu-item-8798"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73764&amp;inc=0">Art
+                                                                    Exhibitions</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8799"
+                                                                id="mega-menu-item-8799"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73765&amp;inc=0">Arts
+                                                                    and Crafts Events</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8800"
+                                                                id="mega-menu-item-8800"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=74248&amp;inc=0">Author
+                                                                    Talks</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8801"
+                                                                id="mega-menu-item-8801"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73766&amp;inc=0">Biblioteca
+                                                                    Criolla Events</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8803"
+                                                                id="mega-menu-item-8803"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=75957&amp;inc=0">Community
+                                                                    Awareness Series (CAS)</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8804"
+                                                                id="mega-menu-item-8804"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73768&amp;inc=0">Computer
+                                                                    Training</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8805"
+                                                                id="mega-menu-item-8805"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73769&amp;inc=0">Cultural
+                                                                    Celebrations</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8806"
+                                                                id="mega-menu-item-8806"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73770&amp;inc=0">Educational
+                                                                    Workshops</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8807"
+                                                                id="mega-menu-item-8807"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73771&amp;inc=0">Family
+                                                                    Events</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8808"
+                                                                id="mega-menu-item-8808"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73772&amp;inc=0">Fun
+                                                                    and Games Events</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8809"
+                                                                id="mega-menu-item-8809"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73773&amp;inc=0">Health
+                                                                    and Wellness Events</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8810"
+                                                                id="mega-menu-item-8810"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73774&amp;inc=0">Music
+                                                                    and Dance Events</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8812"
+                                                                id="mega-menu-item-8812"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=73775&amp;inc=0">Storytime
+                                                                    Events</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8924"
+                                                                id="mega-menu-item-8924"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=80010&amp;inc=0">Teen
+                                                                    Programs</a></li>
+                                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-8925"
+                                                                id="mega-menu-item-8925"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.libcal.com/calendar/?cid=-1&amp;t=d&amp;d=0000-00-00&amp;cal=-1&amp;ct=80011&amp;inc=0">S.T.E.A.M/ST.E.M
+                                                                    Programs</a></li>
+                                                        </ul>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li class="mega-menu-column mega-menu-columns-4-of-12 mega-menu-clear"
+                                        id="mega-menu-981-0-2">
+                                        <ul class="mega-sub-menu">
+                                            <li class="mega-menu-item mega-menu-item-type-custom mega-menu-item-object-custom mega-menu-item-has-children mega-menu-item-8836"
+                                                id="mega-menu-item-8836"><a class="mega-menu-link" href="#">Special
+                                                    Programs &amp; Resources<span class="mega-indicator"
+                                                        aria-hidden="true"></span></a>
+                                                <ul class="mega-sub-menu">
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-8827"
+                                                        id="mega-menu-item-8827"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/program-proposal/">Submit
+                                                            Program&nbsp;Proposal</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-8485"
+                                                        id="mega-menu-item-8485"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/communipaw-makerspace-3d-printing-service/">3D
+                                                            Printing Service at Communipaw</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-9042"
+                                                        id="mega-menu-item-9042"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/calendar/community-awareness-series/">Community
+                                                            Awareness Series (CAS)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-9081"
+                                                        id="mega-menu-item-9081"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/resources/computer-learning-resource-center/">Computer
+                                                            Learning Resource Center (Miller Branch)</a></li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-has-children mega-menu-item-7216"
+                                                        id="mega-menu-item-7216"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/miller-branch-teen-center/"
+                                                            aria-expanded="false">Miller Branch Teen Center<span
+                                                                class="mega-indicator" aria-hidden="true"></span></a>
+                                                        <ul class="mega-sub-menu">
+                                                            <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-11247"
+                                                                id="mega-menu-item-11247"><a class="mega-menu-link"
+                                                                    href="https://jclibrary.org/miller-branch-3d-printing-service/">3D
+                                                                    Printing at Miller</a></li>
+                                                        </ul>
+                                                    </li>
+                                                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-menu-item-9209"
+                                                        id="mega-menu-item-9209"><a class="mega-menu-link"
+                                                            href="https://jclibrary.org/reserve-space/">Reserve a
+                                                            Space</a></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    <li class="mega-menu-item mega-menu-item-type-post_type mega-menu-item-object-page mega-align-bottom-left mega-menu-flyout mega-menu-item-26"
+                        id="mega-menu-item-26">
+                        <a class="mega-menu-link" href="https://www.jclibrary.org/about/donate/" tabindex="0">Donate</a>
+                    </li>
+            </div>
+        </div>
+    </div>
+</nav>
+</header>
