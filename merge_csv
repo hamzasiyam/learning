@@ -1,0 +1,73 @@
+import pandas as pd
+from tkinter import Tk, filedialog, simpledialog, messagebox
+
+def combine_csvs():
+    # Initialize Tk
+    root = Tk()
+    root.withdraw()
+
+    # Ask for Title
+    title_value = simpledialog.askstring(
+        "Set Title",
+        "Enter the Title value to apply to all rows:"
+    )
+    if not title_value:
+        messagebox.showerror("Error", "Title cannot be empty.")
+        return
+
+    # Ask for Author
+    author_value = simpledialog.askstring(
+        "Set Author",
+        "Enter the Author value to apply to all rows:"
+    )
+    if not author_value:
+        messagebox.showerror("Error", "Author cannot be empty.")
+        return
+
+    # Select multiple CSV files
+    file_paths = filedialog.askopenfilenames(
+        title="Select CSV files",
+        filetypes=[("CSV files", "*.csv")]
+    )
+
+    if not file_paths:
+        messagebox.showinfo("Cancelled", "No files selected.")
+        return
+
+    dataframes = []
+
+    for file in file_paths:
+        df = pd.read_csv(file)
+
+        # Validate required columns
+        if not {"Highlight", "Note"}.issubset(df.columns):
+            raise ValueError(
+                f"{file} does not contain required columns: 'Highlight', 'Note'"
+            )
+
+        df = df[["Highlight", "Note"]]
+        df["Title"] = title_value
+        df["Author"] = author_value
+        dataframes.append(df)
+
+    # Combine all CSVs
+    combined_df = pd.concat(dataframes, ignore_index=True)
+
+    # Reorder columns
+    combined_df = combined_df[["Title", "Author", "Highlight", "Note"]]
+
+    # Save output CSV
+    save_path = filedialog.asksaveasfilename(
+        title="Save combined CSV",
+        defaultextension=".csv",
+        filetypes=[("CSV files", "*.csv")]
+    )
+
+    if save_path:
+        combined_df.to_csv(save_path, index=False)
+        messagebox.showinfo("Success", f"Combined CSV saved to:\n{save_path}")
+    else:
+        messagebox.showinfo("Cancelled", "Save cancelled.")
+
+if __name__ == "__main__":
+    combine_csvs()
