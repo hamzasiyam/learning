@@ -72,6 +72,74 @@ def format_seconds(s: float) -> str:
     return f"{m:d}:{sec:02d}"
 
 
+def format_bytes(num_bytes: float) -> str:
+    if num_bytes <= 0:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB"]
+    size = float(num_bytes)
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} GB"
+
+
+def estimate_video_pdf_bytes(video_path: str, seconds_step: int, max_width: int, quality: int) -> Optional[float]:
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return None
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        if fps <= 0 or total_frames <= 0:
+            return None
+        duration_sec = total_frames / fps
+        frames = int(duration_sec // seconds_step) + 1
+
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        if w <= 0 or h <= 0:
+            w, h = 1280, 720
+        if w > max_width:
+            scale = max_width / float(w)
+            w = int(w * scale)
+            h = int(h * scale)
+
+        # Rough JPEG size estimate per frame (bytes per pixel scaled by quality).
+        base_bpp = 0.10  # ~0.10 bytes/pixel at quality ~60
+        bpp = base_bpp * (quality / 60.0)
+        per_frame_bytes = max(1.0, w * h * bpp)
+        return frames * per_frame_bytes
+    finally:
+        cap.release()
+
+
+def estimate_output_size_bytes() -> (float, int):
+    settings = PRESETS[preset_var.get()]
+    seconds_step = int(settings["seconds"])
+    max_width = int(settings["width"])
+    quality = int(settings["quality"])
+
+    total = 0.0
+    unknown_videos = 0
+    for item in queue_items:
+        if item.kind == "pdf":
+            try:
+                total += os.path.getsize(item.path)
+            except Exception:
+                pass
+        else:
+            est = estimate_video_pdf_bytes(item.path, seconds_step, max_width, quality)
+            if est is None:
+                unknown_videos += 1
+            else:
+                total += est
+    # Add a small overhead for PDF structure, then estimate optimization savings.
+    total *= 1.05
+    optimized_total = total * 0.85
+    return optimized_total, unknown_videos
+
+
 def ui_call(fn, *args, **kwargs):
     root.after(0, lambda: fn(*args, **kwargs))
 
@@ -82,6 +150,10 @@ def ui_set_status(text: str):
 
 def ui_set_eta(text: str):
     ui_call(eta_label.config, text=text)
+
+
+def ui_set_estimated_size(text: str):
+    ui_call(size_label.config, text=text)
 
 
 def ui_set_progress(value: int, maximum: int):
@@ -107,6 +179,7 @@ def ui_set_buttons_running(running: bool):
     ui_call(build_btn.config, state=state)
     ui_call(preset_combo.config, state=("disabled" if running else "readonly"))
     ui_call(listbox.config, state=state)
+    ui_call(estimate_btn.config, state=state)
 
 
 def ui_popup_done(output_pdf: str):
@@ -324,6 +397,20 @@ def refresh_listbox(select_index: Optional[int] = None):
         listbox.activate(select_index)
 
 
+def update_estimate_label():
+    if not queue_items:
+        ui_set_estimated_size("Estimated size: --")
+        return
+    try:
+        total_bytes, unknown_videos = estimate_output_size_bytes()
+        if unknown_videos:
+            ui_set_estimated_size(f"Estimated size (optimized): ~{format_bytes(total_bytes)} (some videos unknown)")
+        else:
+            ui_set_estimated_size(f"Estimated size (optimized): ~{format_bytes(total_bytes)}")
+    except Exception:
+        ui_set_estimated_size("Estimated size: --")
+
+
 def add_videos():
     paths = filedialog.askopenfilenames(
         title="Select Video Files",
@@ -334,6 +421,7 @@ def add_videos():
     for p in paths:
         queue_items.append(QueueItem("video", p))
     refresh_listbox(len(queue_items) - 1)
+    update_estimate_label()
 
 
 def add_pdfs():
@@ -346,6 +434,7 @@ def add_pdfs():
     for p in paths:
         queue_items.append(QueueItem("pdf", p))
     refresh_listbox(len(queue_items) - 1)
+    update_estimate_label()
 
 
 def remove_selected():
@@ -355,11 +444,13 @@ def remove_selected():
     idx = sel[0]
     queue_items.pop(idx)
     refresh_listbox(min(idx, len(queue_items) - 1))
+    update_estimate_label()
 
 
 def clear_list():
     queue_items.clear()
     refresh_listbox(None)
+    update_estimate_label()
 
 
 def move_selected(delta: int):
@@ -374,6 +465,7 @@ def move_selected(delta: int):
         return
     queue_items[i], queue_items[j] = queue_items[j], queue_items[i]
     refresh_listbox(j)
+    update_estimate_label()
 
 
 def move_selected_with_keys(delta: int):
@@ -495,6 +587,11 @@ def build_combined_pdf():
 
                 ui_set_status("Writing final PDF...")
                 ui_set_eta("ETA: --")
+                try:
+                    for page in writer.pages:
+                        page.compress_content_streams()
+                except Exception:
+                    pass
                 with open(output_pdf, "wb") as f:
                     writer.write(f)
 
@@ -569,6 +666,7 @@ preset_combo = Combobox(
     width=40,
 )
 preset_combo.grid(row=3, column=1, padx=6, pady=4, sticky="w")
+preset_combo.bind("<<ComboboxSelected>>", lambda e: update_estimate_label())
 
 # Queue controls
 queue_frame = tk.Frame(root)
@@ -613,6 +711,12 @@ status_label.pack(anchor="w")
 
 eta_label = tk.Label(status_frame, text="ETA: --")
 eta_label.pack(anchor="w")
+
+size_label = tk.Label(status_frame, text="Estimated size: --")
+size_label.pack(anchor="w")
+
+estimate_btn = tk.Button(status_frame, text="Update Estimate", command=update_estimate_label, width=16)
+estimate_btn.pack(anchor="w", pady=4)
 
 progress_bar = Progressbar(status_frame, length=780, mode="determinate")
 progress_bar.pack(pady=8)
