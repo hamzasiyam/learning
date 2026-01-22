@@ -106,6 +106,7 @@ def ui_set_buttons_running(running: bool):
     ui_call(clear_list_btn.config, state=state)
     ui_call(build_btn.config, state=state)
     ui_call(preset_combo.config, state=("disabled" if running else "readonly"))
+    ui_call(listbox.config, state=state)
 
 
 def ui_popup_done(output_pdf: str):
@@ -186,7 +187,7 @@ def video_to_temp_pdf(
     if duration_sec > 0:
         targets = list(range(0, int(duration_sec) + 1, seconds_step))
     else:
-        targets = list(range(0, 60 * 60, seconds_step))  # fallback
+        targets = None
 
     # frames temp dir
     frames_dir = os.path.join(os.path.dirname(temp_pdf_path), "_frames_" + str(int(time.time())))
@@ -197,36 +198,65 @@ def video_to_temp_pdf(
         written = 0
         img_paths: List[str] = []
 
-        if progress_cb:
-            progress_cb(0, len(targets), "ETA: --", f"Extracting frames: {os.path.basename(video_path)}")
-
-        for idx, tsec in enumerate(targets, start=1):
-            if stop_event.is_set():
-                raise RuntimeError("Stopped")
-
-            cap.set(cv2.CAP_PROP_POS_MSEC, float(tsec) * 1000.0)
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            frame = resize_frame(frame, max_width=max_width)
-
-            img_path = os.path.join(frames_dir, f"t{tsec:06d}.jpg")
-            # JPEG encode/write
-            ok = cv2.imwrite(img_path, frame, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
-            if ok:
-                img_paths.append(img_path)
-                written += 1
-
+        if targets is not None:
             if progress_cb:
-                elapsed = time.time() - start_time
-                if idx >= 2:
-                    per_item = elapsed / idx
-                    eta = max(0.0, (len(targets) - idx) * per_item)
-                    eta_text = f"ETA: {format_seconds(eta)}"
-                else:
-                    eta_text = "ETA: --"
-                progress_cb(idx, len(targets), eta_text, f"Extracting frames: {os.path.basename(video_path)}")
+                progress_cb(0, len(targets), "ETA: --", f"Extracting frames: {os.path.basename(video_path)}")
+
+            for idx, tsec in enumerate(targets, start=1):
+                if stop_event.is_set():
+                    raise RuntimeError("Stopped")
+
+                cap.set(cv2.CAP_PROP_POS_MSEC, float(tsec) * 1000.0)
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                frame = resize_frame(frame, max_width=max_width)
+
+                img_path = os.path.join(frames_dir, f"t{tsec:06d}.jpg")
+                # JPEG encode/write
+                ok = cv2.imwrite(img_path, frame, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
+                if ok:
+                    img_paths.append(img_path)
+                    written += 1
+
+                if progress_cb:
+                    elapsed = time.time() - start_time
+                    if idx >= 2:
+                        per_item = elapsed / idx
+                        eta = max(0.0, (len(targets) - idx) * per_item)
+                        eta_text = f"ETA: {format_seconds(eta)}"
+                    else:
+                        eta_text = "ETA: --"
+                    progress_cb(idx, len(targets), eta_text, f"Extracting frames: {os.path.basename(video_path)}")
+        else:
+            idx = 0
+            tsec = 0
+            if progress_cb:
+                progress_cb(0, 1, "ETA: --", f"Extracting frames: {os.path.basename(video_path)}")
+
+            while True:
+                if stop_event.is_set():
+                    raise RuntimeError("Stopped")
+
+                cap.set(cv2.CAP_PROP_POS_MSEC, float(tsec) * 1000.0)
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                frame = resize_frame(frame, max_width=max_width)
+
+                img_path = os.path.join(frames_dir, f"t{tsec:06d}.jpg")
+                ok = cv2.imwrite(img_path, frame, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
+                if ok:
+                    img_paths.append(img_path)
+                    written += 1
+
+                idx += 1
+                if progress_cb:
+                    progress_cb(idx, max(1, idx), "ETA: --", f"Extracting frames: {os.path.basename(video_path)}")
+
+                tsec += seconds_step
 
         cap.release()
 
@@ -333,6 +363,8 @@ def clear_list():
 
 
 def move_selected(delta: int):
+    if listbox.cget("state") == "disabled":
+        return
     sel = listbox.curselection()
     if not sel:
         return
@@ -346,6 +378,8 @@ def move_selected(delta: int):
 
 def move_selected_with_keys(delta: int):
     def _handler(event):
+        if listbox.cget("state") == "disabled":
+            return "break"
         if listbox.curselection():
             move_selected(delta)
             return "break"
@@ -499,7 +533,7 @@ def shutdown():
 
 def open_file_location():
     if last_output_pdf and os.path.exists(last_output_pdf):
-        subprocess.run(["explorer", "/select,", os.path.normpath(last_output_pdf)], shell=True)
+        subprocess.run(["explorer", "/select,", os.path.normpath(last_output_pdf)])
 
 
 # =========================
