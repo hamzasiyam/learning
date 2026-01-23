@@ -1,73 +1,183 @@
+import os
 import pandas as pd
-from tkinter import Tk, filedialog, simpledialog, messagebox
+import tkinter as tk
+from tkinter import filedialog, messagebox
 
-def combine_csvs():
-    # Initialize Tk
-    root = Tk()
-    root.withdraw()
+FORMULA_PREFIXES = ("=", "+", "-", "@")
 
-    # Ask for Title
-    title_value = simpledialog.askstring(
-        "Set Title",
-        "Enter the Title value to apply to all rows:"
-    )
-    if not title_value:
-        messagebox.showerror("Error", "Title cannot be empty.")
-        return
 
-    # Ask for Author
-    author_value = simpledialog.askstring(
-        "Set Author",
-        "Enter the Author value to apply to all rows:"
-    )
-    if not author_value:
-        messagebox.showerror("Error", "Author cannot be empty.")
-        return
+def escape_formula_cells(value):
+    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
+        return "'" + value
+    return value
 
-    # Select multiple CSV files
-    file_paths = filedialog.askopenfilenames(
-        title="Select CSV files",
-        filetypes=[("CSV files", "*.csv")]
-    )
 
-    if not file_paths:
-        messagebox.showinfo("Cancelled", "No files selected.")
-        return
+def normalize_note_prefix(value):
+    if isinstance(value, str) and value.lstrip().startswith("."):
+        return "Answer: " + value
+    return value
 
-    dataframes = []
 
-    for file in file_paths:
-        df = pd.read_csv(file)
+def ensure_highlight_note_columns(df, file_path: str):
+    if {"Highlight", "Note"}.issubset(df.columns):
+        return df[["Highlight", "Note"]]
+    if df.shape[1] < 2:
+        raise ValueError(
+            f"{file_path} must have at least 2 columns to map to 'Highlight' and 'Note'"
+        )
+    df = df.iloc[:, :2].copy()
+    df.columns = ["Highlight", "Note"]
+    return df
 
-        # Validate required columns
-        if not {"Highlight", "Note"}.issubset(df.columns):
-            raise ValueError(
-                f"{file} does not contain required columns: 'Highlight', 'Note'"
-            )
 
-        df = df[["Highlight", "Note"]]
-        df["Title"] = title_value
-        df["Author"] = author_value
-        dataframes.append(df)
+class MergeCsvApp:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("Merge CSV")
+        self.root.geometry("720x520")
 
-    # Combine all CSVs
-    combined_df = pd.concat(dataframes, ignore_index=True)
+        self.file_paths = []
 
-    # Reorder columns
-    combined_df = combined_df[["Title", "Author", "Highlight", "Note"]]
+        self.title_var = tk.StringVar()
+        self.author_var = tk.StringVar()
+        self.output_var = tk.StringVar()
 
-    # Save output CSV
-    save_path = filedialog.asksaveasfilename(
-        title="Save combined CSV",
-        defaultextension=".csv",
-        filetypes=[("CSV files", "*.csv")]
-    )
+        self._build_ui()
 
-    if save_path:
-        combined_df.to_csv(save_path, index=False)
-        messagebox.showinfo("Success", f"Combined CSV saved to:\n{save_path}")
-    else:
-        messagebox.showinfo("Cancelled", "Save cancelled.")
+    def _build_ui(self):
+        meta_frame = tk.Frame(self.root)
+        meta_frame.pack(fill="x", padx=10, pady=8)
+
+        tk.Label(meta_frame, text="Title").grid(row=0, column=0, sticky="w")
+        tk.Entry(meta_frame, textvariable=self.title_var, width=60).grid(
+            row=0, column=1, padx=6, pady=2, sticky="w"
+        )
+
+        tk.Label(meta_frame, text="Author").grid(row=1, column=0, sticky="w")
+        tk.Entry(meta_frame, textvariable=self.author_var, width=60).grid(
+            row=1, column=1, padx=6, pady=2, sticky="w"
+        )
+
+        tk.Label(meta_frame, text="Output CSV").grid(row=2, column=0, sticky="w")
+        tk.Entry(meta_frame, textvariable=self.output_var, width=48).grid(
+            row=2, column=1, padx=6, pady=2, sticky="w"
+        )
+        tk.Button(meta_frame, text="Browse", command=self.choose_output).grid(
+            row=2, column=2, padx=6, pady=2
+        )
+
+        queue_frame = tk.Frame(self.root)
+        queue_frame.pack(fill="both", expand=True, padx=10, pady=8)
+
+        left = tk.Frame(queue_frame)
+        left.pack(side="left", fill="both", expand=True)
+
+        tk.Label(left, text="Selected CSV Files").pack(anchor="w")
+        self.listbox = tk.Listbox(left, height=14, width=75)
+        self.listbox.pack(fill="both", expand=True, pady=6)
+
+        right = tk.Frame(queue_frame)
+        right.pack(side="left", fill="y", padx=10)
+
+        tk.Button(right, text="Add CSVs", width=16, command=self.add_files).pack(pady=4)
+        tk.Button(right, text="Remove Selected", width=16, command=self.remove_selected).pack(pady=4)
+        tk.Button(right, text="Clear List", width=16, command=self.clear_files).pack(pady=4)
+
+        bottom = tk.Frame(self.root)
+        bottom.pack(fill="x", padx=10, pady=10)
+
+        self.status_label = tk.Label(bottom, text="Idle")
+        self.status_label.pack(anchor="w")
+
+        tk.Button(
+            bottom,
+            text="Merge CSVs",
+            width=18,
+            command=self.merge_csvs,
+        ).pack(pady=6)
+
+    def add_files(self):
+        paths = filedialog.askopenfilenames(
+            title="Select CSV files",
+            filetypes=[("CSV files", "*.csv")],
+        )
+        if not paths:
+            return
+        for p in paths:
+            if p not in self.file_paths:
+                self.file_paths.append(p)
+        self.refresh_list()
+
+    def remove_selected(self):
+        sel = list(self.listbox.curselection())
+        if not sel:
+            return
+        for idx in reversed(sel):
+            self.file_paths.pop(idx)
+        self.refresh_list()
+
+    def clear_files(self):
+        self.file_paths = []
+        self.refresh_list()
+
+    def refresh_list(self):
+        self.listbox.delete(0, tk.END)
+        for p in self.file_paths:
+            self.listbox.insert(tk.END, p)
+        self.status_label.config(text=f"{len(self.file_paths)} file(s) selected")
+
+    def choose_output(self):
+        save_path = filedialog.asksaveasfilename(
+            title="Save combined CSV",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv")],
+        )
+        if save_path:
+            self.output_var.set(save_path)
+
+    def merge_csvs(self):
+        title_value = self.title_var.get().strip()
+        author_value = self.author_var.get().strip()
+        output_path = self.output_var.get().strip()
+
+        if not title_value:
+            messagebox.showerror("Error", "Title cannot be empty.")
+            return
+        if not author_value:
+            messagebox.showerror("Error", "Author cannot be empty.")
+            return
+        if not self.file_paths:
+            messagebox.showerror("Error", "Please select at least one CSV file.")
+            return
+        if not output_path:
+            self.choose_output()
+            output_path = self.output_var.get().strip()
+            if not output_path:
+                return
+
+        dataframes = []
+        try:
+            for file in self.file_paths:
+                df = pd.read_csv(file)
+                df = ensure_highlight_note_columns(df, file)
+                df["Title"] = title_value
+                df["Author"] = author_value
+                df["Note"] = df["Note"].map(normalize_note_prefix)
+                df = df.apply(lambda col: col.map(escape_formula_cells))
+                dataframes.append(df)
+
+            combined_df = pd.concat(dataframes, ignore_index=True)
+            combined_df = combined_df[["Title", "Author", "Highlight", "Note"]]
+            combined_df.to_csv(output_path, index=False)
+        except Exception as exc:
+            messagebox.showerror("Error", str(exc))
+            return
+
+        messagebox.showinfo("Success", f"Combined CSV saved to:\n{output_path}")
+        self.status_label.config(text=f"Saved: {os.path.basename(output_path)}")
+
 
 if __name__ == "__main__":
-    combine_csvs()
+    root = tk.Tk()
+    app = MergeCsvApp(root)
+    root.mainloop()
