@@ -1,9 +1,23 @@
 import os
+import re
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
 FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+
+def filename_from_title(title: str, max_length: int = 200) -> str:
+    """Build a Windows-safe filename from the title."""
+    if not title or not title.strip():
+        return "merged"
+    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", title.strip())
+    s = re.sub(r"\s+", " ", s).strip(" .")
+    if not s:
+        return "merged"
+    if len(s) > max_length:
+        s = s[:max_length].rstrip(" .")
+    return s or "merged"
 
 
 def escape_formula_cells(value):
@@ -40,7 +54,6 @@ class MergeCsvApp:
 
         self.title_var = tk.StringVar()
         self.author_var = tk.StringVar()
-        self.output_var = tk.StringVar()
 
         self._build_ui()
 
@@ -56,14 +69,6 @@ class MergeCsvApp:
         tk.Label(meta_frame, text="Author").grid(row=1, column=0, sticky="w")
         tk.Entry(meta_frame, textvariable=self.author_var, width=60).grid(
             row=1, column=1, padx=6, pady=2, sticky="w"
-        )
-
-        tk.Label(meta_frame, text="Output CSV").grid(row=2, column=0, sticky="w")
-        tk.Entry(meta_frame, textvariable=self.output_var, width=48).grid(
-            row=2, column=1, padx=6, pady=2, sticky="w"
-        )
-        tk.Button(meta_frame, text="Browse", command=self.choose_output).grid(
-            row=2, column=2, padx=6, pady=2
         )
 
         queue_frame = tk.Frame(self.root)
@@ -126,19 +131,9 @@ class MergeCsvApp:
             self.listbox.insert(tk.END, p)
         self.status_label.config(text=f"{len(self.file_paths)} file(s) selected")
 
-    def choose_output(self):
-        save_path = filedialog.asksaveasfilename(
-            title="Save combined CSV",
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv")],
-        )
-        if save_path:
-            self.output_var.set(save_path)
-
     def merge_csvs(self):
         title_value = self.title_var.get().strip()
         author_value = self.author_var.get().strip()
-        output_path = self.output_var.get().strip()
 
         if not title_value:
             messagebox.showerror("Error", "Title cannot be empty.")
@@ -149,16 +144,15 @@ class MergeCsvApp:
         if not self.file_paths:
             messagebox.showerror("Error", "Please select at least one CSV file.")
             return
-        if not output_path:
-            self.choose_output()
-            output_path = self.output_var.get().strip()
-            if not output_path:
-                return
+
+        base_name = filename_from_title(title_value) + ".csv"
+        parent_dir = os.path.dirname(os.path.abspath(self.file_paths[0]))
+        output_path = os.path.join(parent_dir, base_name)
 
         dataframes = []
         try:
             for file in self.file_paths:
-                df = pd.read_csv(file)
+                df = pd.read_csv(file, header=None)
                 df = ensure_highlight_note_columns(df, file)
                 df["Title"] = title_value
                 df["Author"] = author_value
