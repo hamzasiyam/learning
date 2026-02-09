@@ -384,7 +384,7 @@ def video_to_temp_pdf(
         c = canvas.Canvas(temp_pdf_path)
         c.setTitle(meta.get("title", ""))
         c.setAuthor(meta.get("author", ""))
-        c.setSubject(meta.get("subject", ""))
+        c.setSubject(meta.get("type", ""))
 
         for i, img_path in enumerate(img_paths, start=1):
             if stop_event.is_set():
@@ -517,38 +517,79 @@ def extract_all_frames_from_videos(
     return all_paths
 
 
+# When optimizing PDF, resize images above this width and re-save at this JPEG quality
+OPTIMIZE_MAX_WIDTH = 1600
+OPTIMIZE_QUALITY = 82
+
+
+def estimate_pdf_size_bytes(image_paths: List[str], optimize: bool = False) -> int:
+    """Estimate final PDF size from selected image file sizes. optimize=True uses a smaller factor."""
+    try:
+        total = sum(os.path.getsize(p) for p in image_paths if os.path.exists(p))
+    except Exception:
+        return 0
+    overhead = 1.12 if not optimize else 1.15  # PDF structure + bar
+    if optimize:
+        total = int(total * 0.45)  # rough reduction from resize+lower quality
+    return int(total * overhead)
+
+
 def build_pdf_from_selected_images(
     image_paths: List[str],
     output_pdf: str,
     meta: dict,
     bar_height: int = 36,
     progress_cb=None,
+    optimize: bool = False,
 ):
-    """Build a PDF with one page per image; each page has image then black bar with photo number (1, 2, 3, ...).
-    Images are drawn at their native resolution and quality (as extracted); no resizing or re-compression."""
+    """Build a PDF with one page per image; each page has image then black bar with photo number (#1, #2, ...).
+    If optimize=True, images are resized (max width 1600) and re-encoded at lower JPEG quality for smaller file size."""
     from reportlab.lib.colors import black
 
     c = canvas.Canvas(output_pdf)
     c.setTitle(meta.get("title", ""))
     c.setAuthor(meta.get("author", ""))
-    c.setSubject(meta.get("subject", ""))
+    c.setSubject(meta.get("type", ""))
 
-    for i, img_path in enumerate(image_paths, start=1):
-        if progress_cb:
-            progress_cb(i, len(image_paths), f"Page {i}/{len(image_paths)}")
-        img = ImageReader(img_path)
-        w, h = img.getSize()
-        page_w = w
-        page_h = h + bar_height
-        c.setPageSize((page_w, page_h))
-        c.drawImage(img, 0, bar_height, width=w, height=h)
-        c.setFillColor(black)
-        c.rect(0, 0, page_w, bar_height, fill=1, stroke=0)
-        c.setFillColorRGB(1, 1, 1)
-        c.setFont("Helvetica", 14)
-        c.drawString(12, bar_height * 0.25, f"#{i}")
-        c.showPage()
+    temp_opt_dir = None
+    if optimize:
+        temp_opt_dir = tempfile.mkdtemp(prefix="video_to_pdf_opt_")
+    try:
+        for i, img_path in enumerate(image_paths, start=1):
+            if progress_cb:
+                progress_cb(i, len(image_paths), f"Page {i}/{len(image_paths)}")
+            if optimize and os.path.exists(img_path):
+                frame = cv2.imread(img_path)
+                if frame is not None:
+                    h, w = frame.shape[:2]
+                    if w > OPTIMIZE_MAX_WIDTH:
+                        scale = OPTIMIZE_MAX_WIDTH / float(w)
+                        new_w = OPTIMIZE_MAX_WIDTH
+                        new_h = int(h * scale)
+                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                    opt_path = os.path.join(temp_opt_dir, f"opt_{i:06d}.jpg")
+                    cv2.imwrite(opt_path, frame, [cv2.IMWRITE_JPEG_QUALITY, OPTIMIZE_QUALITY])
+                    img_path = opt_path
+            img = ImageReader(img_path)
+            w, h = img.getSize()
+            page_w = w
+            page_h = h + bar_height
+            c.setPageSize((page_w, page_h))
+            c.drawImage(img, 0, bar_height, width=w, height=h)
+            c.setFillColor(black)
+            c.rect(0, 0, page_w, bar_height, fill=1, stroke=0)
+            c.setFillColorRGB(1, 1, 1)
+            c.setFont("Helvetica", 14)
+            c.drawString(12, bar_height * 0.25, f"#{i}")
+            c.showPage()
+    finally:
+        if temp_opt_dir:
+            cleanup_dir(temp_opt_dir)
     c.save()
+    try:
+        add_metadata_to_pdf_file(output_pdf, meta)
+    except Exception:
+        pass
 
 
 # =========================
@@ -589,6 +630,8 @@ class FrameSelectionWindow:
         self.range_label.pack(anchor="w")
         self.count_label = tk.Label(top, text="", font=("", 10))
         self.count_label.pack(anchor="w")
+        self.size_estimate_label = tk.Label(top, text="Estimated PDF size: —", font=("", 10))
+        self.size_estimate_label.pack(anchor="w")
 
         # Images per page dropdown
         row0 = tk.Frame(self.win)
@@ -632,7 +675,10 @@ class FrameSelectionWindow:
         self.prev_btn.pack(side="left", padx=6)
         self.next_btn = tk.Button(bot, text="Next", width=12, command=self._next_page)
         self.next_btn.pack(side="left", padx=6)
+        self.optimize_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(bot, text="Optimize PDF (smaller file)", variable=self.optimize_var, command=self._update_size_estimate).pack(side="left", padx=12)
         tk.Button(bot, text="Create PDF", width=14, command=self._create_pdf).pack(side="left", padx=20)
+        tk.Button(bot, text=" i ", width=3, command=self._show_size_info).pack(side="left", padx=4)
 
         note = (
             "Previews: full-size frames and small preview images are stored in a temporary folder. "
@@ -790,6 +836,30 @@ class FrameSelectionWindow:
     def _update_count_label(self):
         n = sum(1 for k in self.keep if k)
         self.count_label.config(text=f"Selected: {n} of {len(self.all_paths)} to keep")
+        self._update_size_estimate()
+
+    def _update_size_estimate(self):
+        selected = [p for p, k in zip(self.all_paths, self.keep) if k]
+        if not selected:
+            self.size_estimate_label.config(text="Estimated PDF size: —")
+            return
+        optimize = self.optimize_var.get()
+        est_bytes = estimate_pdf_size_bytes(selected, optimize=optimize)
+        self.size_estimate_label.config(text=f"Estimated PDF size: ~{format_bytes(est_bytes)}" + (" (optimized)" if optimize else ""))
+
+    def _show_size_info(self):
+        """Show popup with would-be PDF size and optimized PDF size for current selection."""
+        selected = [p for p, k in zip(self.all_paths, self.keep) if k]
+        if not selected:
+            messagebox.showinfo("PDF size", "Select at least one photo to see size estimates.")
+            return
+        size_normal = estimate_pdf_size_bytes(selected, optimize=False)
+        size_optimized = estimate_pdf_size_bytes(selected, optimize=True)
+        msg = (
+            f"Estimated PDF size (as-is):  ~{format_bytes(size_normal)}\n\n"
+            f"Estimated PDF size (optimized):  ~{format_bytes(size_optimized)}"
+        )
+        messagebox.showinfo("PDF size", msg)
 
     def _refresh_page(self):
         n = self.images_per_page
@@ -866,7 +936,8 @@ class FrameSelectionWindow:
             messagebox.showerror("Error", "Select at least one photo to keep.")
             return
 
-        doc_title = self.meta.get("title", "") or "Untitled"
+        # Title from main GUI is the default filename for the final PDF
+        doc_title = self.meta.get("title", "").strip() or "Untitled"
         safe_name = filename_for_windows(doc_title) + ".pdf"
         output_pdf = filedialog.asksaveasfilename(
             title="Save PDF",
@@ -883,6 +954,7 @@ class FrameSelectionWindow:
                 output_pdf,
                 self.meta,
                 bar_height=BAR_HEIGHT_PTS,
+                optimize=self.optimize_var.get(),
             )
         except Exception as e:
             messagebox.showerror("Error", str(e))
@@ -913,6 +985,44 @@ def append_pdf_to_writer(writer: "PdfWriter", pdf_path: str):
     reader = PdfReader(pdf_path)
     for page in reader.pages:
         writer.add_page(page)
+
+
+def meta_to_pdf_metadata(meta: dict) -> dict:
+    """Build pypdf metadata dict from Readwise-style meta. All keys optional."""
+    pdf_meta = {}
+    if meta.get("title"):
+        pdf_meta["/Title"] = meta["title"]
+    if meta.get("author"):
+        pdf_meta["/Author"] = meta["author"]
+    if meta.get("tags"):
+        pdf_meta["/Keywords"] = meta["tags"]
+    if meta.get("type"):
+        pdf_meta["/Type"] = meta["type"]
+    if meta.get("published"):
+        # PDF CreationDate format: D:YYYYMMDDHHmmSS
+        s = meta["published"].strip().replace("-", "").replace("/", "")[:8]
+        if len(s) == 8 and s.isdigit():
+            pdf_meta["/CreationDate"] = f"D:{s}000000"
+    if meta.get("language"):
+        pdf_meta["/Language"] = meta["language"]
+    if meta.get("cover_image"):
+        pdf_meta["/CoverImage"] = meta["cover_image"]
+    return pdf_meta
+
+
+def add_metadata_to_pdf_file(pdf_path: str, meta: dict):
+    """Read a PDF, add metadata, write back. Used for PDFs created by reportlab (e.g. from selected frames)."""
+    pdf_meta = meta_to_pdf_metadata(meta)
+    if not pdf_meta:
+        return
+    ensure_pdf_merge_available()
+    reader = PdfReader(pdf_path)
+    writer = PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    writer.add_metadata(pdf_meta)
+    with open(pdf_path, "wb") as f:
+        writer.write(f)
 
 
 # =========================
@@ -1031,18 +1141,15 @@ def build_combined_pdf():
         ui_set_status("Add at least one video or PDF")
         return
 
-    course = course_var.get().strip()
-    lecture = lecture_var.get().strip()
+    title = title_var.get().strip()
     author = author_var.get().strip()
-    title_override = title_var.get().strip()
-    subject = subject_var.get().strip()
-    keywords = keywords_var.get().strip()
-    creator = creator_var.get().strip()
-    producer = producer_var.get().strip()
+    tags = tags_var.get().strip()
+    type_ = type_var.get().strip()
+    published = published_var.get().strip()
+    language = language_var.get().strip()
+    cover_image = cover_var.get().strip()
 
-    # Use document title as filename, Windows-safe
-    derived_title = f"{course} – {lecture}".strip(" –") or "Untitled"
-    doc_title = title_override or derived_title
+    doc_title = title or "Untitled"
     safe_name = filename_for_windows(doc_title)
     output_pdf = filedialog.asksaveasfilename(
         title="Save Combined PDF",
@@ -1057,10 +1164,11 @@ def build_combined_pdf():
     meta = {
         "title": doc_title,
         "author": author,
-        "subject": subject or course,
-        "keywords": keywords,
-        "creator": creator,
-        "producer": producer,
+        "tags": tags,
+        "type": type_ or "PDF",
+        "published": published,
+        "language": language,
+        "cover_image": cover_image,
     }
 
     stop_event.clear()
@@ -1132,20 +1240,7 @@ def build_combined_pdf():
 
                 ui_set_status("Writing final PDF...")
                 ui_set_eta("ETA: --")
-                # Set optional metadata on final PDF (e.g. for Readwise Reader)
-                pdf_meta = {}
-                if meta.get("title"):
-                    pdf_meta["/Title"] = meta["title"]
-                if meta.get("author"):
-                    pdf_meta["/Author"] = meta["author"]
-                if meta.get("subject"):
-                    pdf_meta["/Subject"] = meta["subject"]
-                if meta.get("keywords"):
-                    pdf_meta["/Keywords"] = meta["keywords"]
-                if meta.get("creator"):
-                    pdf_meta["/Creator"] = meta["creator"]
-                if meta.get("producer"):
-                    pdf_meta["/Producer"] = meta["producer"]
+                pdf_meta = meta_to_pdf_metadata(meta)
                 if pdf_meta:
                     writer.add_metadata(pdf_meta)
                 try:
@@ -1194,23 +1289,22 @@ def extract_frames_and_select():
         messagebox.showwarning("No videos", "Add at least one video to the queue for this option.")
         return
 
-    course = course_var.get().strip()
-    lecture = lecture_var.get().strip()
+    title = title_var.get().strip()
     author = author_var.get().strip()
-    title_override = title_var.get().strip()
-    subject = subject_var.get().strip()
-    keywords = keywords_var.get().strip()
-    creator = creator_var.get().strip()
-    producer = producer_var.get().strip()
-    derived_title = f"{course} – {lecture}".strip(" –") or "Untitled"
-    doc_title = title_override or derived_title
+    tags = tags_var.get().strip()
+    type_ = type_var.get().strip()
+    published = published_var.get().strip()
+    language = language_var.get().strip()
+    cover_image = cover_var.get().strip()
+    doc_title = title or "Untitled"
     meta = {
         "title": doc_title,
         "author": author,
-        "subject": subject or course,
-        "keywords": keywords,
-        "creator": creator,
-        "producer": producer,
+        "tags": tags,
+        "type": type_ or "PDF",
+        "published": published,
+        "language": language,
+        "cover_image": cover_image,
     }
 
     preset_name = preset_var.get()
@@ -1298,43 +1392,41 @@ root = tk.Tk()
 root.title("Video/PDF Queue → Combined PDF")
 root.geometry("820x720")
 
-# Meta (all optional — for Readwise Reader and general PDF metadata)
+# Meta (all optional — Readwise-style fields)
 meta_frame = tk.Frame(root)
 meta_frame.pack(fill="x", padx=10, pady=8)
 
-tk.Label(meta_frame, text="Course Title (optional)").grid(row=0, column=0, sticky="w")
-course_var = tk.StringVar()
-tk.Entry(meta_frame, textvariable=course_var, width=60).grid(row=0, column=1, padx=6, pady=2, sticky="w")
-
-tk.Label(meta_frame, text="Lecture Title (optional)").grid(row=1, column=0, sticky="w")
-lecture_var = tk.StringVar()
-tk.Entry(meta_frame, textvariable=lecture_var, width=60).grid(row=1, column=1, padx=6, pady=2, sticky="w")
-
-tk.Label(meta_frame, text="Title (optional)").grid(row=2, column=0, sticky="w")
+tk.Label(meta_frame, text="Title (optional)").grid(row=0, column=0, sticky="w")
 title_var = tk.StringVar()
-tk.Entry(meta_frame, textvariable=title_var, width=60).grid(row=2, column=1, padx=6, pady=2, sticky="w")
+tk.Entry(meta_frame, textvariable=title_var, width=60).grid(row=0, column=1, padx=6, pady=2, sticky="w")
 
-tk.Label(meta_frame, text="Author / Instructor (optional)").grid(row=3, column=0, sticky="w")
+tk.Label(meta_frame, text="Author (optional)").grid(row=1, column=0, sticky="w")
 author_var = tk.StringVar()
-tk.Entry(meta_frame, textvariable=author_var, width=60).grid(row=3, column=1, padx=6, pady=2, sticky="w")
+tk.Entry(meta_frame, textvariable=author_var, width=60).grid(row=1, column=1, padx=6, pady=2, sticky="w")
 
-tk.Label(meta_frame, text="Subject (optional)").grid(row=4, column=0, sticky="w")
-subject_var = tk.StringVar()
-tk.Entry(meta_frame, textvariable=subject_var, width=60).grid(row=4, column=1, padx=6, pady=2, sticky="w")
+tk.Label(meta_frame, text="Document tags (optional)").grid(row=2, column=0, sticky="w")
+tags_var = tk.StringVar()
+tk.Entry(meta_frame, textvariable=tags_var, width=60).grid(row=2, column=1, padx=6, pady=2, sticky="w")
 
-tk.Label(meta_frame, text="Keywords (optional)").grid(row=5, column=0, sticky="w")
-keywords_var = tk.StringVar()
-tk.Entry(meta_frame, textvariable=keywords_var, width=60).grid(row=5, column=1, padx=6, pady=2, sticky="w")
+tk.Label(meta_frame, text="Type (optional)").grid(row=3, column=0, sticky="w")
+type_var = tk.StringVar(value="PDF")
+tk.Entry(meta_frame, textvariable=type_var, width=60).grid(row=3, column=1, padx=6, pady=2, sticky="w")
 
-tk.Label(meta_frame, text="Creator (optional)").grid(row=6, column=0, sticky="w")
-creator_var = tk.StringVar()
-tk.Entry(meta_frame, textvariable=creator_var, width=60).grid(row=6, column=1, padx=6, pady=2, sticky="w")
+tk.Label(meta_frame, text="Published (optional)").grid(row=4, column=0, sticky="w")
+published_var = tk.StringVar()
+tk.Entry(meta_frame, textvariable=published_var, width=60).grid(row=4, column=1, padx=6, pady=2, sticky="w")
+tk.Label(meta_frame, text="e.g. 2026-02-08", fg="gray").grid(row=4, column=2, sticky="w", padx=4)
 
-tk.Label(meta_frame, text="Producer (optional)").grid(row=7, column=0, sticky="w")
-producer_var = tk.StringVar()
-tk.Entry(meta_frame, textvariable=producer_var, width=60).grid(row=7, column=1, padx=6, pady=2, sticky="w")
+tk.Label(meta_frame, text="Language (optional)").grid(row=5, column=0, sticky="w")
+language_var = tk.StringVar()
+tk.Entry(meta_frame, textvariable=language_var, width=60).grid(row=5, column=1, padx=6, pady=2, sticky="w")
 
-tk.Label(meta_frame, text="Compression Preset").grid(row=8, column=0, sticky="w")
+tk.Label(meta_frame, text="Cover image (optional)").grid(row=6, column=0, sticky="w")
+cover_var = tk.StringVar()
+tk.Entry(meta_frame, textvariable=cover_var, width=60).grid(row=6, column=1, padx=6, pady=2, sticky="w")
+tk.Label(meta_frame, text="path", fg="gray").grid(row=6, column=2, sticky="w", padx=4)
+
+tk.Label(meta_frame, text="Compression Preset").grid(row=7, column=0, sticky="w")
 preset_var = tk.StringVar(value="3 sec (Original resolution)")
 preset_combo = Combobox(
     meta_frame,
@@ -1343,7 +1435,7 @@ preset_combo = Combobox(
     state="readonly",
     width=40,
 )
-preset_combo.grid(row=8, column=1, padx=6, pady=4, sticky="w")
+preset_combo.grid(row=7, column=1, padx=6, pady=4, sticky="w")
 preset_combo.bind("<<ComboboxSelected>>", lambda e: update_estimate_label())
 
 # Queue controls
