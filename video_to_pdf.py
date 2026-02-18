@@ -5,7 +5,7 @@ import tempfile
 import threading
 import subprocess
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import cv2
 
@@ -433,14 +433,21 @@ def estimate_total_frames(video_paths: List[str], preset_name: str) -> int:
     return max(1, total)
 
 
+def _sanitize_folder_name(name: str) -> str:
+    """Sanitize a string for use as a folder name (remove invalid filesystem chars)."""
+    return re.sub(r'[\\/:*?"<>|]', "_", name).strip() or "video"
+
+
 def extract_all_frames_from_videos(
     video_paths: List[str],
     preset_name: str,
     output_dir: str,
     progress_cb=None,
     estimated_total: Optional[int] = None,
-) -> List[str]:
-    """Extract frames from all videos into output_dir. Returns list of image paths in order.
+) -> Tuple[List[str], List[Tuple[str, List[str]]]]:
+    """Extract frames from all videos into output_dir. Each video's frames go in a separate
+    subfolder named after the video file. Returns (all_paths, video_collections) where
+    video_collections is [(video_basename, [paths]), ...] for GUI grouping.
     Uses seek-based extraction when duration is known (fast: only decodes needed frames);
     falls back to frame-by-frame when metadata is missing so no frames are missed.
     Quality is unchanged: same resolution and JPEG quality either way.
@@ -451,6 +458,7 @@ def extract_all_frames_from_videos(
     quality = int(settings["quality"])
 
     all_paths: List[str] = []
+    video_collections: List[Tuple[str, List[str]]] = []
     step_max = estimated_total if estimated_total is not None and estimated_total > 0 else 1
 
     for v_idx, video_path in enumerate(video_paths):
@@ -461,7 +469,14 @@ def extract_all_frames_from_videos(
         if not cap.isOpened():
             raise RuntimeError(f"Cannot open video: {os.path.basename(video_path)}")
 
-        prefix = f"v{v_idx:03d}_"
+        # Create a separate folder for this video's frames
+        video_basename = os.path.basename(video_path)
+        base_name = os.path.splitext(video_basename)[0]
+        folder_name = f"v{v_idx:03d}_{_sanitize_folder_name(base_name)}"
+        video_frames_dir = os.path.join(output_dir, folder_name)
+        os.makedirs(video_frames_dir, exist_ok=True)
+        paths_for_video: List[str] = []
+
         fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         duration_sec = (total_frames / fps) if (fps > 0 and total_frames > 0) else 0.0
@@ -477,10 +492,11 @@ def extract_all_frames_from_videos(
                 if not ret:
                     break
                 frame = resize_frame(frame, max_width=max_width)
-                img_path = os.path.join(output_dir, f"{prefix}t{tsec:06d}.jpg")
+                img_path = os.path.join(video_frames_dir, f"t{tsec:06d}.jpg")
                 ok = cv2.imwrite(img_path, frame, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
                 if ok:
                     all_paths.append(img_path)
+                    paths_for_video.append(img_path)
                 if progress_cb:
                     progress_cb(len(all_paths), step_max, "", f"Extracting: {os.path.basename(video_path)}")
         else:
@@ -499,10 +515,11 @@ def extract_all_frames_from_videos(
                 if pos_sec >= next_target_sec:
                     frame = resize_frame(frame, max_width=max_width)
                     tsec = int(next_target_sec)
-                    img_path = os.path.join(output_dir, f"{prefix}t{tsec:06d}.jpg")
+                    img_path = os.path.join(video_frames_dir, f"t{tsec:06d}.jpg")
                     ok = cv2.imwrite(img_path, frame, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
                     if ok:
                         all_paths.append(img_path)
+                        paths_for_video.append(img_path)
                     next_target_sec += seconds_step
                     if progress_cb:
                         progress_cb(
@@ -514,8 +531,9 @@ def extract_all_frames_from_videos(
                 frame_count += 1
 
         cap.release()
+        video_collections.append((video_basename, paths_for_video))
 
-    return all_paths
+    return all_paths, video_collections
 
 
 # When optimizing PDF, resize images above this width and re-save at this JPEG quality
@@ -601,6 +619,406 @@ THUMB_MAX_WIDTH = 220
 ZOOM_MAX_WIDTH = 900  # max width for right-click zoom view
 BAR_HEIGHT_PTS = 36
 IMAGES_PER_PAGE_CHOICES = (8, 12, 15)
+
+
+# =========================
+# Video-based frame selection (frames grouped by source video file)
+# =========================
+class VideoCollectionFrameSelectionWindow:
+    """Frame selection with frames grouped by source video. Click a video to view its frames."""
+
+    def __init__(self, parent: tk.Tk, video_collections: List[Tuple[str, List[str]]], temp_dir: str, meta: dict):
+        # video_collections: [(video_basename, [paths]), ...]
+        self.video_collections = video_collections
+        self.temp_dir = temp_dir
+        self.meta = meta
+        self.selected_collection_idx = 0
+        self.keep = {}  # (coll_idx, frame_idx) -> bool
+        for ci, (_, paths) in enumerate(video_collections):
+            for fi in range(len(paths)):
+                self.keep[(ci, fi)] = False
+        self.page_index = 0
+        self.images_per_page = 8
+
+        self.win = tk.Toplevel(parent)
+        self.win.title("Select Frames for PDF — by Video")
+        self.win.geometry("1150x750")
+        self.win.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        self._thumb_dir = os.path.join(temp_dir, "_thumbs")
+        os.makedirs(self._thumb_dir, exist_ok=True)
+        self._zoom_window = None
+        self._zoom_photo_ref = None
+
+        paned = tk.PanedWindow(self.win, orient=tk.HORIZONTAL)
+        paned.pack(fill="both", expand=True, padx=8, pady=8)
+
+        left_frame = tk.Frame(paned, width=240)
+        tk.Label(left_frame, text="Source videos", font=("", 11, "bold")).pack(anchor="w")
+        tk.Label(left_frame, text="Click a video to view its frames", fg="gray").pack(anchor="w")
+        scroll = tk.Scrollbar(left_frame)
+        self.collection_listbox = tk.Listbox(left_frame, height=20, width=32, font=("", 10), yscrollcommand=scroll.set)
+        scroll.config(command=self.collection_listbox.yview)
+        self.collection_listbox.pack(fill="both", expand=True, pady=6)
+        scroll.pack(side="right", fill="y")
+        self.collection_listbox.bind("<<ListboxSelect>>", self._on_collection_select)
+        for name, paths in video_collections:
+            n = len(paths)
+            self.collection_listbox.insert(tk.END, f"{name} — {n} frame{'s' if n != 1 else ''}")
+        left_frame.pack(fill="both", expand=True)
+        paned.add(left_frame, minsize=220)
+
+        right_frame = tk.Frame(paned)
+        top = tk.Frame(right_frame)
+        top.pack(fill="x", pady=(0, 6))
+        self.range_label = tk.Label(top, text="", font=("", 11))
+        self.range_label.pack(anchor="w")
+        self.count_label = tk.Label(top, text="", font=("", 10))
+        self.count_label.pack(anchor="w")
+        self.size_estimate_label = tk.Label(top, text="Estimated PDF size: —", font=("", 10))
+        self.size_estimate_label.pack(anchor="w")
+
+        row0 = tk.Frame(right_frame)
+        row0.pack(fill="x", pady=2)
+        tk.Label(row0, text="Images per page:").pack(side="left", padx=(0, 6))
+        self.per_page_var = tk.StringVar(value="8")
+        per_page_combo = Combobox(
+            row0, textvariable=self.per_page_var,
+            values=[str(n) for n in IMAGES_PER_PAGE_CHOICES],
+            state="readonly", width=4,
+        )
+        per_page_combo.pack(side="left", padx=2)
+        per_page_combo.bind("<<ComboboxSelected>>", self._on_per_page_change)
+        tk.Label(row0, text="(use ← → arrow keys to change page)").pack(side="left", padx=12)
+
+        self.grid_frame = tk.Frame(right_frame)
+        self.grid_frame.pack(fill="both", expand=True, padx=4, pady=6)
+        self.cell_frames = []
+        self.check_vars = []
+        self.photo_refs = []
+        for slot in range(MAX_IMAGES_PER_PAGE):
+            cell = tk.Frame(self.grid_frame, relief="ridge", bd=2, bg="light gray")
+            lbl = tk.Label(cell, text="", image=None, compound="top", cursor="hand2")
+            lbl.pack(fill="both", expand=True, padx=2, pady=2)
+            lbl.bind("<Button-1>", lambda e, s=slot: self._on_photo_click(s))
+            lbl.bind("<Button-3>", lambda e, s=slot: self._on_photo_right_click(s))
+            var = tk.BooleanVar(value=False)
+            cb = tk.Checkbutton(cell, text="Keep", variable=var, command=self._on_toggle)
+            cb.pack(pady=2)
+            self.cell_frames.append((cell, lbl, cb))
+            self.check_vars.append(var)
+            self.photo_refs.append(None)
+
+        bot = tk.Frame(right_frame)
+        bot.pack(fill="x", pady=8)
+        self.prev_btn = tk.Button(bot, text="Previous", width=12, command=self._prev_page)
+        self.prev_btn.pack(side="left", padx=6)
+        self.next_btn = tk.Button(bot, text="Next", width=12, command=self._next_page)
+        self.next_btn.pack(side="left", padx=6)
+        self.optimize_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(bot, text="Optimize PDF (smaller file)", variable=self.optimize_var, command=self._update_size_estimate).pack(side="left", padx=12)
+        tk.Button(bot, text="Create PDF", width=14, command=self._create_pdf).pack(side="left", padx=20)
+        tk.Button(bot, text=" i ", width=3, command=self._show_size_info).pack(side="left", padx=4)
+
+        right_frame.pack(fill="both", expand=True)
+        paned.add(right_frame, minsize=700)
+
+        def on_left(e):
+            if self.page_index > 0:
+                self._prev_page()
+            return "break"
+
+        def on_right(e):
+            self._next_page()
+            return "break"
+
+        self.win.bind("<Left>", on_left)
+        self.win.bind("<Right>", on_right)
+
+        self._apply_grid_layout()
+        self.collection_listbox.selection_set(0)
+        self._on_collection_select(None)
+
+    def _current_frames(self) -> List[str]:
+        return self.video_collections[self.selected_collection_idx][1]
+
+    def _on_collection_select(self, event):
+        sel = self.collection_listbox.curselection()
+        if sel:
+            self.selected_collection_idx = sel[0]
+            self.page_index = 0
+            self._refresh_page()
+
+    def _apply_grid_layout(self):
+        n = self.images_per_page
+        ncols, nrows = (4, 2) if n == 8 else ((4, 3) if n == 12 else (5, 3))
+        for c in range(5):
+            self.grid_frame.columnconfigure(c, weight=1 if c < ncols else 0)
+        for r in range(3):
+            self.grid_frame.rowconfigure(r, weight=1 if r < nrows else 0)
+        for slot in range(MAX_IMAGES_PER_PAGE):
+            cell, lbl, cb = self.cell_frames[slot]
+            if slot < n:
+                row, col = (slot // 5, slot % 5) if n == 15 else (slot // ncols, slot % ncols)
+                cell.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
+            else:
+                cell.grid_remove()
+
+    def _on_per_page_change(self, event=None):
+        try:
+            n = int(self.per_page_var.get())
+            if n in IMAGES_PER_PAGE_CHOICES:
+                self.images_per_page = n
+                self._apply_grid_layout()
+                self._refresh_page()
+        except (ValueError, TypeError):
+            pass
+
+    def _make_thumbnail(self, img_path: str, coll_idx: int, frame_idx: int) -> str:
+        out = os.path.join(self._thumb_dir, f"v{coll_idx}_f{frame_idx}.png")
+        if os.path.exists(out):
+            return out
+        try:
+            frame = cv2.imread(img_path)
+            if frame is None:
+                return ""
+            h, w = frame.shape[:2]
+            if w > THUMB_MAX_WIDTH:
+                scale = THUMB_MAX_WIDTH / float(w)
+                frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+            cv2.imwrite(out, frame)
+            return out
+        except Exception:
+            return ""
+
+    def _on_photo_click(self, slot: int):
+        frames = self._current_frames()
+        start = self.page_index * self.images_per_page
+        idx = start + slot
+        if idx >= len(frames):
+            return
+        ci, fi = self.selected_collection_idx, idx
+        self.keep[(ci, fi)] = not self.keep.get((ci, fi), False)
+        self.check_vars[slot].set(self.keep[(ci, fi)])
+        self._update_cell_appearance(slot)
+        self._update_count_label()
+
+    def _update_cell_appearance(self, slot: int):
+        frames = self._current_frames()
+        start = self.page_index * self.images_per_page
+        idx = start + slot
+        if idx < len(frames):
+            ci, fi = self.selected_collection_idx, idx
+            cell, _, _ = self.cell_frames[slot]
+            cell.config(bg="light green" if self.keep.get((ci, fi), False) else "light gray")
+
+    def _on_toggle(self):
+        frames = self._current_frames()
+        start = self.page_index * self.images_per_page
+        for i in range(self.images_per_page):
+            idx = start + i
+            if idx < len(frames):
+                ci, fi = self.selected_collection_idx, idx
+                self.keep[(ci, fi)] = self.check_vars[i].get()
+        self._update_count_label()
+
+    def _update_count_label(self):
+        total_selected = sum(1 for k in self.keep.values() if k)
+        total_frames = sum(len(p) for _, p in self.video_collections)
+        self.count_label.config(text=f"Selected: {total_selected} of {total_frames} frames to keep")
+        self._update_size_estimate()
+
+    def _update_size_estimate(self):
+        selected = self._get_selected_paths_ordered()
+        if not selected:
+            self.size_estimate_label.config(text="Estimated PDF size: —")
+            return
+        optimize = self.optimize_var.get()
+        est = estimate_pdf_size_bytes(selected, optimize=optimize)
+        self.size_estimate_label.config(text=f"Estimated PDF size: ~{format_bytes(est)}" + (" (optimized)" if optimize else ""))
+
+    def _get_selected_paths_ordered(self) -> List[str]:
+        out = []
+        for ci, (_, paths) in enumerate(self.video_collections):
+            for fi in range(len(paths)):
+                if self.keep.get((ci, fi), False):
+                    out.append(paths[fi])
+        return out
+
+    def _refresh_page(self):
+        frames = self._current_frames()
+        n = self.images_per_page
+        start = self.page_index * n
+        end = min(start + n, len(frames))
+        total = len(frames)
+        total_pages = max(1, (total + n - 1) // n)
+        video_name = self.video_collections[self.selected_collection_idx][0]
+        self.range_label.config(
+            text=f"{video_name} — Frames {start + 1}–{end} of {total}  (page {self.page_index + 1} of {total_pages})"
+        )
+        self._update_count_label()
+
+        for i in range(MAX_IMAGES_PER_PAGE):
+            idx = start + i
+            cell, lbl, cb = self.cell_frames[i]
+            if i < n and idx < len(frames):
+                path = frames[idx]
+                thumb_path = self._make_thumbnail(path, self.selected_collection_idx, idx)
+                if thumb_path and os.path.exists(thumb_path):
+                    try:
+                        photo = tk.PhotoImage(file=thumb_path)
+                        self.photo_refs[i] = photo
+                        lbl.config(image=photo, text="")
+                    except Exception:
+                        lbl.config(image="", text="")
+                else:
+                    lbl.config(image="", text="")
+                ci, fi = self.selected_collection_idx, idx
+                self.check_vars[i].set(self.keep.get((ci, fi), False))
+                cb.config(state="normal")
+                self._update_cell_appearance(i)
+            else:
+                self.photo_refs[i] = None
+                cell.config(bg="SystemButtonFace")
+                lbl.config(image="", text="")
+                self.check_vars[i].set(False)
+                cb.config(state="disabled")
+
+        self.prev_btn.config(state="normal" if self.page_index > 0 else "disabled")
+        self.next_btn.config(state="normal" if end < total else "disabled")
+
+    def _prev_page(self):
+        frames = self._current_frames()
+        n = self.images_per_page
+        start = self.page_index * n
+        for i in range(n):
+            idx = start + i
+            if idx < len(frames):
+                ci, fi = self.selected_collection_idx, idx
+                self.keep[(ci, fi)] = self.check_vars[i].get()
+        self.page_index = max(0, self.page_index - 1)
+        self._refresh_page()
+
+    def _next_page(self):
+        frames = self._current_frames()
+        n = self.images_per_page
+        start = self.page_index * n
+        for i in range(n):
+            idx = start + i
+            if idx < len(frames):
+                ci, fi = self.selected_collection_idx, idx
+                self.keep[(ci, fi)] = self.check_vars[i].get()
+        total_pages = max(1, (len(frames) + n - 1) // n)
+        self.page_index = min(self.page_index + 1, total_pages - 1)
+        self._refresh_page()
+
+    def _on_photo_right_click(self, slot: int):
+        frames = self._current_frames()
+        idx = self.page_index * self.images_per_page + slot
+        if idx >= len(frames):
+            return
+        if self._zoom_window and self._zoom_window.winfo_exists():
+            self._zoom_window.destroy()
+            self._zoom_window = None
+            self._zoom_photo_ref = None
+            return
+        path = frames[idx]
+        try:
+            frame = cv2.imread(path)
+            if frame is None:
+                return
+            h, w = frame.shape[:2]
+            if w > ZOOM_MAX_WIDTH:
+                scale = ZOOM_MAX_WIDTH / float(w)
+                frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+            zoom_path = os.path.join(self._thumb_dir, "_zoom_preview.png")
+            cv2.imwrite(zoom_path, frame)
+            zoom_win = tk.Toplevel(self.win)
+            zoom_win.title(f"Frame #{idx + 1} — right-click to close")
+            zoom_win.protocol("WM_DELETE_WINDOW", lambda: self._close_zoom(zoom_win))
+            photo = tk.PhotoImage(file=zoom_path)
+            self._zoom_photo_ref = photo
+            lbl = tk.Label(zoom_win, image=photo, cursor="hand2")
+            lbl.pack(padx=2, pady=2)
+            lbl.bind("<Button-3>", lambda e: self._close_zoom(zoom_win))
+            zoom_win.bind("<Button-3>", lambda e: self._close_zoom(zoom_win))
+            self._zoom_window = zoom_win
+        except Exception:
+            pass
+
+    def _close_zoom(self, zoom_win):
+        if zoom_win.winfo_exists():
+            zoom_win.destroy()
+        self._zoom_window = None
+        self._zoom_photo_ref = None
+
+    def _show_size_info(self):
+        selected = self._get_selected_paths_ordered()
+        if not selected:
+            messagebox.showinfo("Info", "Select at least one frame to see size estimates.")
+            return
+        normal = estimate_pdf_size_bytes(selected, optimize=False)
+        optimized = estimate_pdf_size_bytes(selected, optimize=True)
+        msg = f"Current selection: {len(selected)} frames\n\n"
+        msg += f"PDF size (no optimization): ~{format_bytes(normal)}\n"
+        msg += f"PDF size (with optimization): ~{format_bytes(optimized)}"
+        messagebox.showinfo("PDF Size Info", msg)
+
+    def _create_pdf(self):
+        frames = self._current_frames()
+        n = self.images_per_page
+        start = self.page_index * n
+        for i in range(n):
+            idx = start + i
+            if idx < len(frames):
+                ci, fi = self.selected_collection_idx, idx
+                self.keep[(ci, fi)] = self.check_vars[i].get()
+
+        selected = self._get_selected_paths_ordered()
+        if not selected:
+            messagebox.showerror("Error", "Select at least one photo to keep.")
+            return
+
+        doc_title = self.meta.get("title", "").strip() or "Untitled"
+        safe_name = filename_for_windows(doc_title) + ".pdf"
+        output_pdf = filedialog.asksaveasfilename(
+            title="Save PDF",
+            initialfile=safe_name,
+            defaultextension=".pdf",
+            filetypes=[("PDF Files", "*.pdf")],
+        )
+        if not output_pdf:
+            return
+
+        def run():
+            global last_output_pdf
+            try:
+                build_pdf_from_selected_images(
+                    selected, output_pdf, self.meta,
+                    bar_height=BAR_HEIGHT_PTS,
+                    optimize=self.optimize_var.get(),
+                )
+                last_output_pdf = output_pdf
+                self.win.after(0, lambda: messagebox.showinfo("PDF Created", f"Saved: {os.path.basename(output_pdf)}"))
+            except Exception as e:
+                self.win.after(0, lambda: messagebox.showerror("Error", str(e)))
+            try:
+                ui_call(ui_enable_open_location, True)
+            except NameError:
+                pass
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_close(self):
+        try:
+            cleanup_dir(self.temp_dir)
+        except Exception:
+            pass
+        self.win.destroy()
+        try:
+            ui_call(ui_enable_open_location, True)
+        except NameError:
+            pass
 
 
 class FrameSelectionWindow:
@@ -1345,7 +1763,7 @@ def extract_frames_and_select():
                 ui_set_eta(f"Preview available in ~{eta_str}")
                 ui_set_progress(step_val, max(1, step_max))
 
-            all_paths = extract_all_frames_from_videos(
+            all_paths, video_collections = extract_all_frames_from_videos(
                 video_paths,
                 preset_name,
                 temp_dir,
@@ -1356,11 +1774,12 @@ def extract_frames_and_select():
                 ui_call(lambda: messagebox.showerror("Error", "No frames could be extracted from the videos."))
                 cleanup_dir(temp_dir)
                 return
+
             ui_set_status("Select frames to include in PDF")
             ui_set_eta("")
             ui_set_progress(1, 1)
             ui_set_buttons_running(False)
-            ui_call(lambda: FrameSelectionWindow(root, all_paths, temp_dir, meta))
+            ui_call(lambda: VideoCollectionFrameSelectionWindow(root, video_collections, temp_dir, meta))
         except RuntimeError as e:
             if str(e).lower().strip() == "stopped":
                 ui_set_status("Stopped")
