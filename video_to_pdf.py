@@ -212,6 +212,7 @@ def ui_set_buttons_running(running: bool):
     ui_call(move_down_btn.config, state=state)
     ui_call(remove_btn.config, state=state)
     ui_call(clear_list_btn.config, state=state)
+    ui_call(reverse_btn.config, state=state)
     ui_call(build_btn.config, state=state)
     try:
         ui_call(extract_select_btn.config, state=state)
@@ -1099,6 +1100,15 @@ def clear_list():
     update_estimate_label()
 
 
+def reverse_queue():
+    """Reverse queue order: top-to-bottom becomes bottom-to-top and vice versa."""
+    if not queue_items:
+        return
+    queue_items.reverse()
+    refresh_listbox(None)
+    update_estimate_label()
+
+
 def move_selected(delta: int):
     if listbox.cget("state") == "disabled":
         return
@@ -1468,6 +1478,9 @@ move_down_btn.pack(pady=4)
 
 remove_btn = tk.Button(right, text="Remove Selected", width=18, command=remove_selected)
 remove_btn.pack(pady=10)
+
+reverse_btn = tk.Button(right, text="Reverse order", width=18, command=reverse_queue)
+reverse_btn.pack(pady=4)
 
 clear_list_btn = tk.Button(right, text="Clear List", width=18, command=clear_list)
 clear_list_btn.pack(pady=4)
