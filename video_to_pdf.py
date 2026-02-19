@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+import io
 import tempfile
 import threading
 import subprocess
@@ -793,6 +794,11 @@ class VideoCollectionFrameSelectionWindow:
                         activebackground="#2c3e50", activeforeground="white",
                         font=("", 8), command=self._update_size
                         ).pack(anchor="w", padx=10, pady=2)
+        self.split_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(c5, text="Split output into ~10MB PDFs", variable=self.split_var,
+                        bg="#2c3e50", fg="white", selectcolor="#1e2e3e",
+                        activebackground="#2c3e50", activeforeground="white",
+                        font=("", 8)).pack(anchor="w", padx=10, pady=2)
         _btn("📄  Create PDF",  self._create_pdf, bg="#1565c0")
         _btn("ℹ  Size Info",   self._size_info,  bg="#37474f")
 
@@ -1451,11 +1457,22 @@ class VideoCollectionFrameSelectionWindow:
         def run():
             global last_output_pdf
             try:
-                build_pdf_from_selected_images(all_images, out, self.meta,
-                                                bar_height=BAR_HEIGHT_PTS, optimize=self.opt_var.get())
-                last_output_pdf = out
-                self.win.after(0, lambda: messagebox.showinfo("Done",
-                    f"Saved: {os.path.basename(out)}\n({len(sel)} frames + {len(self.extra_image_paths)} images)"))
+                if self.split_var.get():
+                    with tempfile.TemporaryDirectory(prefix="video_to_pdf_split_") as tmp_dir:
+                        tmp_pdf = os.path.join(tmp_dir, "full_export.pdf")
+                        build_pdf_from_selected_images(all_images, tmp_pdf, self.meta,
+                                                        bar_height=BAR_HEIGHT_PTS, optimize=self.opt_var.get())
+                        part_paths = split_pdf_into_size_limited_parts(tmp_pdf, out, max_part_mb=10)
+                    last_output_pdf = part_paths[0] if part_paths else None
+                    self.win.after(0, lambda: messagebox.showinfo("Done",
+                        f"Saved {len(part_paths)} PDF part(s), about 10MB each:\n{os.path.basename(out)}_part001.pdf ...\n"
+                        f"({len(sel)} frames + {len(self.extra_image_paths)} images)"))
+                else:
+                    build_pdf_from_selected_images(all_images, out, self.meta,
+                                                    bar_height=BAR_HEIGHT_PTS, optimize=self.opt_var.get())
+                    last_output_pdf = out
+                    self.win.after(0, lambda: messagebox.showinfo("Done",
+                        f"Saved: {os.path.basename(out)}\n({len(sel)} frames + {len(self.extra_image_paths)} images)"))
                 try: ui_call(ui_enable_open_location, True)
                 except Exception: pass
             except Exception as e:
@@ -1505,6 +1522,64 @@ def add_metadata_to_pdf_file(pdf_path, meta):
     for page in reader.pages: writer.add_page(page)
     writer.add_metadata(pm)
     with open(pdf_path, "wb") as f: writer.write(f)
+
+
+def split_pdf_into_size_limited_parts(pdf_path, output_pdf_path, max_part_mb=10):
+    ensure_pdf_merge_available()
+    max_bytes = int(max_part_mb * 1024 * 1024)
+    if max_bytes <= 0:
+        raise ValueError("max_part_mb must be positive")
+
+    reader = PdfReader(pdf_path)
+    total_pages = len(reader.pages)
+    if total_pages == 0:
+        raise RuntimeError("Cannot split an empty PDF")
+
+    base_dir = os.path.dirname(output_pdf_path)
+    base_name = os.path.splitext(os.path.basename(output_pdf_path))[0]
+    src_meta = reader.metadata
+
+    def _new_writer():
+        w = PdfWriter()
+        if src_meta:
+            try: w.add_metadata(dict(src_meta))
+            except Exception: pass
+        return w
+
+    part_paths = []
+    part_idx = 1
+    current_pages = []
+
+    def _estimate_size(pages):
+        probe_writer = _new_writer()
+        for p in pages:
+            probe_writer.add_page(p)
+        probe = io.BytesIO()
+        probe_writer.write(probe)
+        return probe.tell()
+
+    def _write_part(pages, idx):
+        out_part = os.path.join(base_dir, f"{base_name}_part{idx:03d}.pdf")
+        part_writer = _new_writer()
+        for p in pages:
+            part_writer.add_page(p)
+        with open(out_part, "wb") as f:
+            part_writer.write(f)
+        return out_part
+
+    for page in reader.pages:
+        candidate = current_pages + [page]
+        if not current_pages or _estimate_size(candidate) <= max_bytes:
+            current_pages = candidate
+            continue
+        part_paths.append(_write_part(current_pages, part_idx))
+        part_idx += 1
+        current_pages = [page]
+
+    if current_pages:
+        part_paths.append(_write_part(current_pages, part_idx))
+
+    return part_paths
 
 
 # =========================
@@ -1670,6 +1745,19 @@ def build_combined_pdf():
                     for page in writer.pages: page.compress_content_streams()
                 except Exception: pass
                 with open(out, "wb") as f: writer.write(f)
+                if split_pdf_var.get():
+                    part_paths = split_pdf_into_size_limited_parts(out, out, max_part_mb=10)
+                    try: os.remove(out)
+                    except Exception: pass
+                    last_output_pdf = part_paths[0] if part_paths else None
+                    ui_set_status(f"Done ({len(part_paths)} parts)")
+                    ui_set_eta("ETA: 0:00")
+                    ui_set_progress(1, 1)
+                    ui_enable_open_location(True)
+                    ui_call(lambda: messagebox.showinfo(
+                        "PDF Created",
+                        f"Created {len(part_paths)} part(s) near 10MB each:\n{os.path.basename(out)}_part001.pdf ..."))
+                    return
             finally:
                 cleanup_dir(temp_root)
             last_output_pdf = out
@@ -1805,6 +1893,11 @@ preset_combo = Combobox(mf, textvariable=preset_var, values=list(PRESETS.keys())
                          state="readonly", width=38)
 preset_combo.grid(row=row_idx, column=1, padx=6, pady=3, sticky="w")
 preset_combo.bind("<<ComboboxSelected>>", lambda e: update_estimate_label())
+
+row_idx += 1
+split_pdf_var = tk.BooleanVar(value=False)
+tk.Checkbutton(mf, text="Split exported PDFs into ~10MB parts", variable=split_pdf_var).grid(
+    row=row_idx, column=1, padx=6, pady=1, sticky="w")
 
 # ── Main content area: Queue ────────────────────────────────────
 content = tk.Frame(root)
