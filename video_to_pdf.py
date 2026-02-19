@@ -4,6 +4,7 @@ import time
 import tempfile
 import threading
 import subprocess
+from io import BytesIO
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -560,12 +561,19 @@ def build_pdf_from_selected_images(
     bar_height: int = 36,
     progress_cb=None,
     optimize: bool = False,
+    split_max_bytes: Optional[int] = None,
 ):
     """Build a PDF with one page per image; each page has image then black bar with photo number (#1, #2, ...).
     If optimize=True, images are resized (max width 1600) and re-encoded at lower JPEG quality for smaller file size."""
     from reportlab.lib.colors import black
 
-    c = canvas.Canvas(output_pdf)
+    split_temp_dir = None
+    build_target = output_pdf
+    if split_max_bytes:
+        split_temp_dir = tempfile.mkdtemp(prefix="video_to_pdf_split_")
+        build_target = os.path.join(split_temp_dir, "combined_for_split.pdf")
+
+    c = canvas.Canvas(build_target)
     c.setTitle(meta.get("title", ""))
     c.setAuthor(meta.get("author", ""))
     c.setSubject(meta.get("type", ""))
@@ -606,9 +614,26 @@ def build_pdf_from_selected_images(
             cleanup_dir(temp_opt_dir)
     c.save()
     try:
-        add_metadata_to_pdf_file(output_pdf, meta)
+        add_metadata_to_pdf_file(build_target, meta)
     except Exception:
         pass
+
+    if split_max_bytes:
+        try:
+            split_files = split_pdf_file_by_size(
+                build_target,
+                split_max_bytes,
+                output_dir=os.path.dirname(output_pdf),
+                output_base_name=os.path.splitext(os.path.basename(output_pdf))[0],
+            )
+            if not split_files:
+                raise RuntimeError("Split failed: no output files were created.")
+            return split_files
+        finally:
+            if split_temp_dir:
+                cleanup_dir(split_temp_dir)
+
+    return [output_pdf]
 
 
 # =========================
@@ -619,6 +644,7 @@ THUMB_MAX_WIDTH = 220
 ZOOM_MAX_WIDTH = 900  # max width for right-click zoom view
 BAR_HEIGHT_PTS = 36
 IMAGES_PER_PAGE_CHOICES = (8, 12, 15)
+SPLIT_PART_MAX_BYTES = 10 * 1024 * 1024
 
 
 # =========================
@@ -717,6 +743,8 @@ class VideoCollectionFrameSelectionWindow:
         self.next_btn.pack(side="left", padx=6)
         self.optimize_var = tk.BooleanVar(value=False)
         tk.Checkbutton(bot, text="Optimize PDF (smaller file)", variable=self.optimize_var, command=self._update_size_estimate).pack(side="left", padx=12)
+        self.split_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(bot, text="Split into 10 MB parts", variable=self.split_var).pack(side="left", padx=6)
         tk.Button(bot, text="Create PDF", width=14, command=self._create_pdf).pack(side="left", padx=20)
         tk.Button(bot, text=" i ", width=3, command=self._show_size_info).pack(side="left", padx=4)
 
@@ -993,13 +1021,18 @@ class VideoCollectionFrameSelectionWindow:
         def run():
             global last_output_pdf
             try:
-                build_pdf_from_selected_images(
+                created_files = build_pdf_from_selected_images(
                     selected, output_pdf, self.meta,
                     bar_height=BAR_HEIGHT_PTS,
                     optimize=self.optimize_var.get(),
+                    split_max_bytes=(SPLIT_PART_MAX_BYTES if self.split_var.get() else None),
                 )
-                last_output_pdf = output_pdf
-                self.win.after(0, lambda: messagebox.showinfo("PDF Created", f"Saved: {os.path.basename(output_pdf)}"))
+                last_output_pdf = created_files[0] if created_files else output_pdf
+                if self.split_var.get():
+                    msg = f"Saved split PDFs starting with: {os.path.basename(output_pdf)}"
+                else:
+                    msg = f"Saved: {os.path.basename(output_pdf)}"
+                self.win.after(0, lambda: messagebox.showinfo("PDF Created", msg))
             except Exception as e:
                 self.win.after(0, lambda: messagebox.showerror("Error", str(e)))
             try:
@@ -1096,6 +1129,8 @@ class FrameSelectionWindow:
         self.next_btn.pack(side="left", padx=6)
         self.optimize_var = tk.BooleanVar(value=False)
         tk.Checkbutton(bot, text="Optimize PDF (smaller file)", variable=self.optimize_var, command=self._update_size_estimate).pack(side="left", padx=12)
+        self.split_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(bot, text="Split into 10 MB parts", variable=self.split_var).pack(side="left", padx=6)
         tk.Button(bot, text="Create PDF", width=14, command=self._create_pdf).pack(side="left", padx=20)
         tk.Button(bot, text=" i ", width=3, command=self._show_size_info).pack(side="left", padx=4)
 
@@ -1368,23 +1403,27 @@ class FrameSelectionWindow:
             return
 
         try:
-            build_pdf_from_selected_images(
+            created_files = build_pdf_from_selected_images(
                 selected,
                 output_pdf,
                 self.meta,
                 bar_height=BAR_HEIGHT_PTS,
                 optimize=self.optimize_var.get(),
+                split_max_bytes=(SPLIT_PART_MAX_BYTES if self.split_var.get() else None),
             )
         except Exception as e:
             messagebox.showerror("Error", str(e))
             return
 
         cleanup_dir(self.temp_dir)
-        messagebox.showinfo("Success", f"PDF created with {len(selected)} pages:\n{os.path.basename(output_pdf)}")
+        if self.split_var.get():
+            messagebox.showinfo("Success", f"PDF split into 10 MB parts and saved using base name:\n{os.path.basename(output_pdf)}")
+        else:
+            messagebox.showinfo("Success", f"PDF created with {len(selected)} pages:\n{os.path.basename(output_pdf)}")
         self.win.destroy()
         ui_call(ui_enable_open_location, True)
         global last_output_pdf
-        last_output_pdf = output_pdf
+        last_output_pdf = created_files[0] if created_files else output_pdf
 
     def _on_close(self):
         cleanup_dir(self.temp_dir)
@@ -1442,6 +1481,62 @@ def add_metadata_to_pdf_file(pdf_path: str, meta: dict):
     writer.add_metadata(pdf_meta)
     with open(pdf_path, "wb") as f:
         writer.write(f)
+
+
+def split_pdf_file_by_size(
+    pdf_path: str,
+    max_size_bytes: int,
+    output_dir: Optional[str] = None,
+    output_base_name: Optional[str] = None,
+) -> List[str]:
+    """Split a PDF into sequential parts that are each <= max_size_bytes when possible."""
+    ensure_pdf_merge_available()
+    if max_size_bytes <= 0:
+        raise ValueError("max_size_bytes must be greater than 0")
+
+    reader = PdfReader(pdf_path)
+    if not reader.pages:
+        return []
+
+    base_dir = output_dir or os.path.dirname(pdf_path)
+    base_name = output_base_name or os.path.splitext(os.path.basename(pdf_path))[0]
+    part_paths: List[str] = []
+    part_index = 1
+    writer = PdfWriter()
+
+    def writer_size_bytes(pdf_writer: "PdfWriter") -> int:
+        buffer = BytesIO()
+        pdf_writer.write(buffer)
+        return len(buffer.getvalue())
+
+    def save_part(current_writer: "PdfWriter", index: int) -> str:
+        part_path = os.path.join(base_dir, f"{base_name}_part{index:02d}.pdf")
+        with open(part_path, "wb") as f:
+            current_writer.write(f)
+        return part_path
+
+    for page in reader.pages:
+        writer.add_page(page)
+        if writer_size_bytes(writer) <= max_size_bytes:
+            continue
+
+        if len(writer.pages) == 1:
+            part_paths.append(save_part(writer, part_index))
+            part_index += 1
+            writer = PdfWriter()
+            continue
+
+        overflow_page = writer.pages.pop()
+        part_paths.append(save_part(writer, part_index))
+        part_index += 1
+
+        writer = PdfWriter()
+        writer.add_page(overflow_page)
+
+    if len(writer.pages) > 0:
+        part_paths.append(save_part(writer, part_index))
+
+    return part_paths
 
 
 # =========================
