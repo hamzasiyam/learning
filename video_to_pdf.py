@@ -1,13 +1,29 @@
 import os
 import re
+import sys
 import time
 import tempfile
 import threading
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Dict
 
 import cv2
+
+
+@contextmanager
+def suppress_ffmpeg_stderr():
+    """Redirect stderr to devnull to suppress FFmpeg H.264 warnings (e.g. mmco: unref short failure)."""
+    stderr_fd = sys.stderr.fileno()
+    with open(os.devnull, "w") as devnull:
+        backup_fd = os.dup(stderr_fd)
+        try:
+            os.dup2(devnull.fileno(), stderr_fd)
+            yield
+        finally:
+            os.dup2(backup_fd, stderr_fd)
+            os.close(backup_fd)
 import numpy as np
 
 import tkinter as tk
@@ -241,7 +257,8 @@ def format_bytes(num_bytes: float) -> str:
 
 
 def estimate_video_pdf_bytes(video_path: str, seconds_step: int, max_width: int, quality: int) -> Optional[float]:
-    cap = cv2.VideoCapture(video_path)
+    with suppress_ffmpeg_stderr():
+        cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         return None
     try:
@@ -379,46 +396,47 @@ def video_to_temp_pdf(video_path, temp_pdf_path, preset_name, meta, progress_cb=
     frames_dir = os.path.join(os.path.dirname(temp_pdf_path), "_frames_" + str(int(time.time())))
     os.makedirs(frames_dir, exist_ok=True)
     try:
-        start_time = time.time()
-        img_paths: List[str] = []
+        with suppress_ffmpeg_stderr():
+            start_time = time.time()
+            img_paths: List[str] = []
 
-        if targets is not None:
-            if progress_cb:
-                progress_cb(0, len(targets), "ETA: --", f"Extracting: {os.path.basename(video_path)}")
-            for idx, tsec in enumerate(targets, 1):
-                if stop_event.is_set():
-                    raise RuntimeError("Stopped")
-                cap.set(cv2.CAP_PROP_POS_MSEC, float(tsec) * 1000.0)
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                frame = resize_frame(frame, max_width)
-                img_path = os.path.join(frames_dir, f"t{tsec:06d}.jpg")
-                if cv2.imwrite(img_path, frame, [cv2.IMWRITE_JPEG_QUALITY, quality]):
-                    img_paths.append(img_path)
+            if targets is not None:
                 if progress_cb:
-                    elapsed = time.time() - start_time
-                    eta = f"ETA: {format_seconds(max(0, (len(targets) - idx) * elapsed / idx))}" if idx >= 2 else "ETA: --"
-                    progress_cb(idx, len(targets), eta, f"Extracting: {os.path.basename(video_path)}")
-        else:
-            idx = tsec = 0
-            while True:
-                if stop_event.is_set():
-                    raise RuntimeError("Stopped")
-                cap.set(cv2.CAP_PROP_POS_MSEC, float(tsec) * 1000.0)
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                frame = resize_frame(frame, max_width)
-                img_path = os.path.join(frames_dir, f"t{tsec:06d}.jpg")
-                if cv2.imwrite(img_path, frame, [cv2.IMWRITE_JPEG_QUALITY, quality]):
-                    img_paths.append(img_path)
-                idx += 1
-                tsec += seconds_step
-                if progress_cb:
-                    progress_cb(idx, max(1, idx), "ETA: --", f"Extracting: {os.path.basename(video_path)}")
+                    progress_cb(0, len(targets), "ETA: --", f"Extracting: {os.path.basename(video_path)}")
+                for idx, tsec in enumerate(targets, 1):
+                    if stop_event.is_set():
+                        raise RuntimeError("Stopped")
+                    cap.set(cv2.CAP_PROP_POS_MSEC, float(tsec) * 1000.0)
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    frame = resize_frame(frame, max_width)
+                    img_path = os.path.join(frames_dir, f"t{tsec:06d}.jpg")
+                    if cv2.imwrite(img_path, frame, [cv2.IMWRITE_JPEG_QUALITY, quality]):
+                        img_paths.append(img_path)
+                    if progress_cb:
+                        elapsed = time.time() - start_time
+                        eta = f"ETA: {format_seconds(max(0, (len(targets) - idx) * elapsed / idx))}" if idx >= 2 else "ETA: --"
+                        progress_cb(idx, len(targets), eta, f"Extracting: {os.path.basename(video_path)}")
+            else:
+                idx = tsec = 0
+                while True:
+                    if stop_event.is_set():
+                        raise RuntimeError("Stopped")
+                    cap.set(cv2.CAP_PROP_POS_MSEC, float(tsec) * 1000.0)
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    frame = resize_frame(frame, max_width)
+                    img_path = os.path.join(frames_dir, f"t{tsec:06d}.jpg")
+                    if cv2.imwrite(img_path, frame, [cv2.IMWRITE_JPEG_QUALITY, quality]):
+                        img_paths.append(img_path)
+                    idx += 1
+                    tsec += seconds_step
+                    if progress_cb:
+                        progress_cb(idx, max(1, idx), "ETA: --", f"Extracting: {os.path.basename(video_path)}")
 
-        cap.release()
+            cap.release()
         img_paths.sort()
         if not img_paths:
             raise RuntimeError(f"No frames extracted: {os.path.basename(video_path)}")
@@ -451,7 +469,8 @@ def estimate_total_frames(video_paths, preset_name):
     seconds_step = int(PRESETS[preset_name]["seconds"])
     total = 0
     for vp in video_paths:
-        cap = cv2.VideoCapture(vp)
+        with suppress_ffmpeg_stderr():
+            cap = cv2.VideoCapture(vp)
         if not cap.isOpened():
             continue
         try:
@@ -478,7 +497,8 @@ def extract_all_frames_from_videos(video_paths, preset_name, output_dir, progres
     for v_idx, vp in enumerate(video_paths):
         if stop_event.is_set():
             raise RuntimeError("Stopped")
-        cap = cv2.VideoCapture(vp)
+        with suppress_ffmpeg_stderr():
+            cap = cv2.VideoCapture(vp)
         if not cap.isOpened():
             raise RuntimeError(f"Cannot open: {os.path.basename(vp)}")
 
@@ -488,49 +508,50 @@ def extract_all_frames_from_videos(video_paths, preset_name, output_dir, progres
         os.makedirs(vdir, exist_ok=True)
         vpaths: List[str] = []
 
-        fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
-        tf = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        duration_sec = (tf / fps) if (fps > 0 and tf > 0) else 0.0
+        with suppress_ffmpeg_stderr():
+            fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+            tf = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            duration_sec = (tf / fps) if (fps > 0 and tf > 0) else 0.0
 
-        if duration_sec > 0:
-            for tsec in range(0, int(duration_sec) + 1, seconds_step):
-                if stop_event.is_set():
-                    raise RuntimeError("Stopped")
-                cap.set(cv2.CAP_PROP_POS_MSEC, float(tsec) * 1000.0)
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                frame = resize_frame(frame, max_width)
-                ip = os.path.join(vdir, f"t{tsec:06d}.jpg")
-                if cv2.imwrite(ip, frame, [cv2.IMWRITE_JPEG_QUALITY, quality]):
-                    all_paths.append(ip)
-                    vpaths.append(ip)
-                if progress_cb:
-                    progress_cb(len(all_paths), step_max, "", f"Extracting: {vname}")
-        else:
-            next_t = 0
-            fc = 0
-            fps = fps or 25.0
-            while True:
-                if stop_event.is_set():
-                    raise RuntimeError("Stopped")
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                pos = cap.get(cv2.CAP_PROP_POS_MSEC)
-                pos_sec = (pos / 1000.0) if pos >= 0 else (fc / fps)
-                if pos_sec >= next_t:
+            if duration_sec > 0:
+                for tsec in range(0, int(duration_sec) + 1, seconds_step):
+                    if stop_event.is_set():
+                        raise RuntimeError("Stopped")
+                    cap.set(cv2.CAP_PROP_POS_MSEC, float(tsec) * 1000.0)
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
                     frame = resize_frame(frame, max_width)
-                    ip = os.path.join(vdir, f"t{int(next_t):06d}.jpg")
+                    ip = os.path.join(vdir, f"t{tsec:06d}.jpg")
                     if cv2.imwrite(ip, frame, [cv2.IMWRITE_JPEG_QUALITY, quality]):
                         all_paths.append(ip)
                         vpaths.append(ip)
-                    next_t += seconds_step
                     if progress_cb:
                         progress_cb(len(all_paths), step_max, "", f"Extracting: {vname}")
-                fc += 1
+            else:
+                next_t = 0
+                fc = 0
+                fps = fps or 25.0
+                while True:
+                    if stop_event.is_set():
+                        raise RuntimeError("Stopped")
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    pos = cap.get(cv2.CAP_PROP_POS_MSEC)
+                    pos_sec = (pos / 1000.0) if pos >= 0 else (fc / fps)
+                    if pos_sec >= next_t:
+                        frame = resize_frame(frame, max_width)
+                        ip = os.path.join(vdir, f"t{int(next_t):06d}.jpg")
+                        if cv2.imwrite(ip, frame, [cv2.IMWRITE_JPEG_QUALITY, quality]):
+                            all_paths.append(ip)
+                            vpaths.append(ip)
+                        next_t += seconds_step
+                        if progress_cb:
+                            progress_cb(len(all_paths), step_max, "", f"Extracting: {vname}")
+                    fc += 1
 
-        cap.release()
+            cap.release()
         video_collections.append((vname, vpaths))
 
     return all_paths, video_collections
