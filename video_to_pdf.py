@@ -472,14 +472,20 @@ def estimate_pdf_size_bytes(image_paths, optimize=False):
     return int(total * (1.15 if optimize else 1.12))
 
 
-def build_pdf_from_selected_images(image_paths, output_pdf, meta, bar_height=36, progress_cb=None, optimize=False):
+def build_pdf_from_selected_images(image_paths, output_pdf, meta, bar_height=36,
+                                   progress_cb=None, optimize=False, start_page_number=1,
+                                   progress_offset=0, progress_total=None):
     from reportlab.lib.colors import black
     c = canvas.Canvas(output_pdf)
     c.setTitle(meta.get("title", "")); c.setAuthor(meta.get("author", "")); c.setSubject(meta.get("type", ""))
     tmp_opt = tempfile.mkdtemp(prefix="video_to_pdf_opt_") if optimize else None
     try:
+        full_total = progress_total or len(image_paths)
         for i, ip in enumerate(image_paths, 1):
-            if progress_cb: progress_cb(i, len(image_paths), f"Page {i}/{len(image_paths)}")
+            page_num = start_page_number + i - 1
+            if progress_cb:
+                progress_cb(progress_offset + i, full_total,
+                            f"Page {page_num}/{start_page_number + len(image_paths) - 1}")
             if optimize and os.path.exists(ip):
                 fr = cv2.imread(ip)
                 if fr is not None:
@@ -495,13 +501,73 @@ def build_pdf_from_selected_images(image_paths, output_pdf, meta, bar_height=36,
             c.drawImage(img, 0, bar_height, width=w, height=h)
             c.setFillColor(black); c.rect(0, 0, w, bar_height, fill=1, stroke=0)
             c.setFillColorRGB(1, 1, 1); c.setFont("Helvetica", 14)
-            c.drawString(12, bar_height * 0.25, f"#{i}")
+            c.drawString(12, bar_height * 0.25, f"#{page_num}")
             c.showPage()
     finally:
         if tmp_opt: cleanup_dir(tmp_opt)
     c.save()
     try: add_metadata_to_pdf_file(output_pdf, meta)
     except Exception: pass
+
+
+def estimate_page_pdf_bytes(image_path, optimize=False):
+    try:
+        img_bytes = os.path.getsize(image_path)
+    except Exception:
+        img_bytes = 350 * 1024
+    factor = 0.62 if optimize else 1.08
+    floor = 120 * 1024
+    return max(floor, int(img_bytes * factor))
+
+
+def split_image_paths_by_target_size(image_paths, target_size_mb, optimize=False):
+    target_bytes = max(1, int(target_size_mb * 1024 * 1024))
+    batches: List[List[str]] = []
+    current: List[str] = []
+    current_bytes = 0
+    for p in image_paths:
+        page_bytes = estimate_page_pdf_bytes(p, optimize=optimize)
+        if current and (current_bytes + page_bytes) > target_bytes:
+            batches.append(current)
+            current, current_bytes = [], 0
+        current.append(p)
+        current_bytes += page_bytes
+    if current:
+        batches.append(current)
+    return batches
+
+
+def build_split_pdfs_from_images(image_paths, output_pdf, meta, target_size_mb, bar_height=36,
+                                 optimize=False, progress_cb=None):
+    batches = split_image_paths_by_target_size(image_paths, target_size_mb, optimize=optimize)
+    if len(batches) <= 1:
+        build_pdf_from_selected_images(image_paths, output_pdf, meta, bar_height=bar_height,
+                                       optimize=optimize, progress_cb=progress_cb)
+        return [output_pdf]
+
+    base, ext = os.path.splitext(output_pdf)
+    total_pages = len(image_paths)
+    outputs: List[str] = []
+    offset = 0
+    for idx, batch in enumerate(batches, 1):
+        part_out = f"{base}_part{idx:03d}{ext}"
+        part_meta = dict(meta)
+        title = meta.get("title", "Untitled").strip() or "Untitled"
+        part_meta["title"] = f"{title} (Part {idx}/{len(batches)})"
+        build_pdf_from_selected_images(
+            batch,
+            part_out,
+            part_meta,
+            bar_height=bar_height,
+            optimize=optimize,
+            start_page_number=offset + 1,
+            progress_offset=offset,
+            progress_total=total_pages,
+            progress_cb=progress_cb,
+        )
+        offset += len(batch)
+        outputs.append(part_out)
+    return outputs
 
 
 # =========================
@@ -793,6 +859,20 @@ class VideoCollectionFrameSelectionWindow:
                         activebackground="#2c3e50", activeforeground="white",
                         font=("", 8), command=self._update_size
                         ).pack(anchor="w", padx=10, pady=2)
+        self.split_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(c5, text="Split output into parts", variable=self.split_var,
+                        bg="#2c3e50", fg="white", selectcolor="#1e2e3e",
+                        activebackground="#2c3e50", activeforeground="white",
+                        font=("", 8)
+                        ).pack(anchor="w", padx=10, pady=(2, 0))
+        split_row = tk.Frame(c5, bg="#2c3e50")
+        split_row.pack(fill="x", padx=10, pady=(0, 2))
+        tk.Label(split_row, text="Part size (MB):", bg="#2c3e50", fg="#d7dde2",
+                 font=("", 8)).pack(side="left")
+        self.split_size_var = tk.StringVar(value="10")
+        tk.Entry(split_row, textvariable=self.split_size_var, width=5,
+                 bg="#1f2d3a", fg="white", insertbackground="white",
+                 relief="flat").pack(side="left", padx=4)
         _btn("📄  Create PDF",  self._create_pdf, bg="#1565c0")
         _btn("ℹ  Size Info",   self._size_info,  bg="#37474f")
 
@@ -1448,18 +1528,71 @@ class VideoCollectionFrameSelectionWindow:
             msg = (f"PDF will contain:\n• {len(sel)} video frame(s)\n"
                    f"• {len(self.extra_image_paths)} extra image(s)\nTotal: {len(all_images)} pages\nProceed?")
             if not messagebox.askyesno("Confirm", msg): return
+
+        split_enabled = self.split_var.get()
+        target_size_mb = 10.0
+        if split_enabled:
+            try:
+                target_size_mb = float(self.split_size_var.get().strip())
+                if target_size_mb <= 0:
+                    raise ValueError
+            except Exception:
+                messagebox.showerror("Invalid split size", "Please enter a valid part size in MB (e.g. 10).")
+                return
+
+        prog_win = tk.Toplevel(self.win)
+        prog_win.title("Exporting PDF")
+        prog_win.transient(self.win)
+        prog_win.resizable(False, False)
+        prog_win.grab_set()
+        tk.Label(prog_win, text="Preparing export…", font=("", 10, "bold")).pack(padx=12, pady=(10, 6))
+        prog_status = tk.Label(prog_win, text="", font=("", 9), fg="#555")
+        prog_status.pack(padx=12, pady=(0, 4))
+        prog_bar = Progressbar(prog_win, length=360, mode="determinate")
+        prog_bar.pack(padx=12, pady=(0, 12))
+
+        def on_progress(step, total, msg):
+            def _update():
+                prog_bar["maximum"] = max(1, int(total))
+                prog_bar["value"] = max(0, int(step))
+                prog_status.config(text=msg)
+            self.win.after(0, _update)
+
         def run():
             global last_output_pdf
             try:
-                build_pdf_from_selected_images(all_images, out, self.meta,
-                                                bar_height=BAR_HEIGHT_PTS, optimize=self.opt_var.get())
-                last_output_pdf = out
-                self.win.after(0, lambda: messagebox.showinfo("Done",
-                    f"Saved: {os.path.basename(out)}\n({len(sel)} frames + {len(self.extra_image_paths)} images)"))
+                if split_enabled:
+                    outputs = build_split_pdfs_from_images(
+                        all_images,
+                        out,
+                        self.meta,
+                        target_size_mb=target_size_mb,
+                        bar_height=BAR_HEIGHT_PTS,
+                        optimize=self.opt_var.get(),
+                        progress_cb=on_progress,
+                    )
+                    last_output_pdf = outputs[0] if outputs else out
+                    done_msg = (f"Saved {len(outputs)} files near:\n{os.path.basename(out)}\n"
+                                f"({len(sel)} frames + {len(self.extra_image_paths)} images)")
+                else:
+                    build_pdf_from_selected_images(
+                        all_images,
+                        out,
+                        self.meta,
+                        bar_height=BAR_HEIGHT_PTS,
+                        optimize=self.opt_var.get(),
+                        progress_cb=on_progress,
+                    )
+                    last_output_pdf = out
+                    done_msg = (f"Saved: {os.path.basename(out)}\n"
+                                f"({len(sel)} frames + {len(self.extra_image_paths)} images)")
+                self.win.after(0, lambda: messagebox.showinfo("Done", done_msg))
                 try: ui_call(ui_enable_open_location, True)
                 except Exception: pass
             except Exception as e:
                 self.win.after(0, lambda: messagebox.showerror("Error", str(e)))
+            finally:
+                self.win.after(0, prog_win.destroy)
         threading.Thread(target=run, daemon=True).start()
 
     def _on_close(self):

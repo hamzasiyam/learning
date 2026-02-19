@@ -39,7 +39,9 @@ Turns videos (and optional PDFs) into one combined PDF, with optional frame sele
      - See frames in a grid (8, 12, or 15 per page; choose in the dropdown).
      - Use **? / ?** to change pages; **left-click** or checkbox to mark which frames to **keep** (default: all unchecked; you opt in).
      - **Right-click** a thumbnail to zoom in; right-click again (on zoom or any thumbnail) to close zoom.
-     - Click **Create PDF** to build a PDF from the selected frames only. Each page has the image plus a black bar with **#1**, **#2**, ? in order.
+     - Click **Create PDF** to build a PDF from the selected frames only. Each page has the image plus a black bar with **#1**, **#2**, … in order.
+     - Optional: enable **Split output into parts** and set a target size (default **10 MB**). The tool exports one part at a time and keeps frame numbering continuous across parts (e.g. part 2 can start at #241).
+     - While exporting, a progress window shows page-by-page progress so you can see it is still running.
 - **Output:** One PDF. Filename is derived from the title you enter. Frames are at the resolution/quality of the chosen preset (e.g. original resolution and quality 100 for the ?Original resolution? presets). Extraction uses seek-based reading when possible so it?s faster without losing quality or skipping intervals.
 
 ---
