@@ -1361,6 +1361,16 @@ class FrameSelectionWindow:
         self.next_page_btn = tk.Button(nav, text="Next Page →", width=16,
                                        font=("", 9), command=self._next_page)
         self.next_page_btn.pack(side="left", padx=4)
+        self.keep_page_btn = tk.Button(
+            nav, text="Keep This Page", width=14, font=("", 9),
+            bg="#2e7d32", fg="white", command=self._keep_current_page
+        )
+        self.keep_page_btn.pack(side="left", padx=4)
+        self.skip_page_btn = tk.Button(
+            nav, text="Skip This Page", width=14, font=("", 9),
+            bg="#c62828", fg="white", command=self._skip_current_page
+        )
+        self.skip_page_btn.pack(side="left", padx=4)
 
         paned.add(c4, minsize=500)
 
@@ -1788,6 +1798,31 @@ class FrameSelectionWindow:
             return
         ci = self.selected_collection_idx
         for fi in self._filtered_indices:
+            self.keep[(ci, fi)] = False
+        self._refresh_grid()
+        self._update_selection_count()
+
+    def _iter_current_page_indices(self) -> List[int]:
+        start = self.page_index * self.frames_per_page
+        end = min(start + self.frames_per_page, len(self._filtered_indices))
+        return self._filtered_indices[start:end]
+
+    def _keep_current_page(self):
+        page_indices = self._iter_current_page_indices()
+        if not page_indices:
+            return
+        ci = self.selected_collection_idx
+        for fi in page_indices:
+            self.keep[(ci, fi)] = True
+        self._refresh_grid()
+        self._update_selection_count()
+
+    def _skip_current_page(self):
+        page_indices = self._iter_current_page_indices()
+        if not page_indices:
+            return
+        ci = self.selected_collection_idx
+        for fi in page_indices:
             self.keep[(ci, fi)] = False
         self._refresh_grid()
         self._update_selection_count()

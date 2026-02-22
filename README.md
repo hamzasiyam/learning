@@ -38,6 +38,7 @@ Turns videos (and optional PDFs) into one combined PDF, with optional frame sele
   2. **Extract Frames & Select** ? Extracts frames from all videos (using the preset), then opens a **selection window** where you:
      - See frames in a grid (8, 12, or 15 per page; choose in the dropdown).
      - Use **? / ?** to change pages; **left-click** or checkbox to mark which frames to **keep** (default: all unchecked; you opt in).
+     - Use **Keep This Page** / **Skip This Page** to quickly include or remove every frame shown on the current page.
      - **Right-click** a thumbnail to zoom in; right-click again (on zoom or any thumbnail) to close zoom.
      - Click **Create PDF** to build a PDF from the selected frames only. Each page has the image plus a black bar with **#1**, **#2**, … in order.
      - Optional: enable **Split output into parts** and set a target size (default **10 MB**). The tool exports one part at a time and keeps frame numbering continuous across parts (e.g. part 2 can start at #241).
