@@ -1080,11 +1080,11 @@ def open_output_folder():
 # =========================
 
 # Grid display constants
-MAX_SLOTS_IN_GRID    = 12
-THUMBNAIL_MAX_WIDTH  = 120    # Smaller thumbnails = faster page loads
+MAX_SLOTS_IN_GRID    = 20
+THUMBNAIL_MAX_WIDTH  = 95    # Smaller thumbnails help fit denser pages (up to 20 thumbs/page)
 ZOOM_MAX_WIDTH       = 900
 PAGE_NUMBER_BAR_PTS  = 36
-FRAMES_PER_PAGE_OPTIONS = (6, 8, 12)
+FRAMES_PER_PAGE_OPTIONS = (6, 8, 12, 16, 20)
 
 
 class FrameSelectionWindow:
@@ -1115,7 +1115,7 @@ class FrameSelectionWindow:
 
         self.selected_collection_idx = 0
         self.page_index = 0
-        self.frames_per_page = 8
+        self.frames_per_page = 20
         self._current_filter: Optional[int] = None
         self._filtered_indices: List[int] = []
 
@@ -1316,7 +1316,7 @@ class FrameSelectionWindow:
         pprow.pack(fill="x", padx=4)
         tk.Label(pprow, text="Thumbnails per page:", font=("", 9),
                  bg="#f9f9f9").pack(side="left")
-        self.per_page_var = tk.StringVar(value="8")
+        self.per_page_var = tk.StringVar(value="20")
         per_page_combo = Combobox(
             pprow, textvariable=self.per_page_var,
             values=[str(n) for n in FRAMES_PER_PAGE_OPTIONS],
@@ -1324,7 +1324,7 @@ class FrameSelectionWindow:
         )
         per_page_combo.pack(side="left", padx=3)
         per_page_combo.bind("<<ComboboxSelected>>", self._on_per_page_changed)
-        tk.Label(pprow, text="   Use left/right arrow keys to change pages quickly.",
+        tk.Label(pprow, text="   Use ←/→ to move pages, S to keep page, D to delete page.",
                  font=("", 8), fg="#777", bg="#f9f9f9").pack(side="left")
 
         # Thumbnail grid
@@ -1346,7 +1346,7 @@ class FrameSelectionWindow:
             img_lbl.bind("<Button-3>", lambda e, s=slot: self._on_thumbnail_right_click(s))
             v  = tk.BooleanVar(value=False)
             cb = tk.Checkbutton(cell, text="Include in PDF", variable=v,
-                                command=self._on_checkbox_toggled)
+                                font=("", 8), command=self._on_checkbox_toggled)
             cb.pack(pady=1)
             self.grid_cells.append((cell, badge_lbl, img_lbl, cb))
             self.check_vars.append(v)
@@ -1372,10 +1372,17 @@ class FrameSelectionWindow:
         )
         self.skip_page_btn.pack(side="left", padx=4)
 
+        self.page_action_hint = tk.Label(
+            nav,
+            text="Tip: Press S to keep this page, D to delete this page while browsing thumbnails.",
+            font=("", 8), fg="#455a64", bg="#ecf0f1", anchor="w"
+        )
+        self.page_action_hint.pack(side="left", padx=(10, 0))
+
         paned.add(c4, minsize=500)
 
         # ═══════════ COLUMN 5 — Action Buttons ═════════════════════
-        c5 = tk.Frame(paned, bg="#2c3e50", width=210)
+        c5 = tk.Frame(paned, bg="#2c3e50", width=180)
         c5.pack_propagate(False)
 
         def _section_header(text, color="#34495e"):
@@ -1387,14 +1394,14 @@ class FrameSelectionWindow:
                 c5, text=text, command=cmd, bg=bg, fg=fg, font=("", 9),
                 relief="flat", cursor="hand2", pady=5,
                 activebackground="#607d8b", activeforeground="white",
-                wraplength=180, justify="center"
+                wraplength=150, justify="center"
             ).pack(fill="x", padx=8, pady=2)
 
         _section_header("Smart Auto-Select", "#1a5276")
         tk.Label(
             c5,
             text="Automatically selects the last (most complete)\nframe from each similar group,\nplus every unique frame.",
-            font=("", 8), bg="#2c3e50", fg="#aaaaaa", wraplength=190, justify="left"
+            font=("", 8), bg="#2c3e50", fg="#aaaaaa", wraplength=155, justify="left"
         ).pack(anchor="w", padx=8, pady=(2, 0))
         _action_button("Auto-Select This Video\n(last frame per group + unique)", self._smart_select_current, bg="#1a6b2a")
         _action_button("Auto-Select All Videos\n(applies to every video in queue)", self._smart_select_all_videos, bg="#145a32")
@@ -1411,7 +1418,7 @@ class FrameSelectionWindow:
         _section_header("Extra Images to Append", "#5d4037")
         self.extra_images_label = tk.Label(
             c5, text="", font=("", 8), bg="#2c3e50",
-            fg="#aaaaaa", wraplength=185, justify="left"
+            fg="#aaaaaa", wraplength=155, justify="left"
         )
         self.extra_images_label.pack(anchor="w", padx=8, pady=2)
         self._update_extra_images_label()
@@ -1452,11 +1459,15 @@ class FrameSelectionWindow:
         tk.Frame(c5, height=1, bg="#4a6572").pack(fill="x", padx=8, pady=6)
         _action_button("Close Window", self._on_close, bg="#b71c1c")
 
-        paned.add(c5, minsize=200)
+        paned.add(c5, minsize=170)
 
         # Keyboard navigation
         self.win.bind("<Left>",  lambda e: (self._prev_page(), "break"))
         self.win.bind("<Right>", lambda e: (self._next_page(), "break"))
+        self.win.bind("<KeyPress-s>", lambda e: (self._keep_current_page(), "break"))
+        self.win.bind("<KeyPress-S>", lambda e: (self._keep_current_page(), "break"))
+        self.win.bind("<KeyPress-d>", lambda e: (self._skip_current_page(), "break"))
+        self.win.bind("<KeyPress-D>", lambda e: (self._skip_current_page(), "break"))
 
         self._apply_grid_layout()
         self.video_listbox.selection_set(0)
@@ -1608,11 +1619,16 @@ class FrameSelectionWindow:
     # ─── Grid layout ──────────────────────────────────────────────
     def _apply_grid_layout(self):
         n     = self.frames_per_page
-        ncols = 4 if n >= 8 else 3
+        if n >= 20:
+            ncols = 5
+        elif n >= 12:
+            ncols = 4
+        else:
+            ncols = 3
         nrows = (n + ncols - 1) // ncols
-        for c in range(4):
+        for c in range(5):
             self.grid_frame.columnconfigure(c, weight=1 if c < ncols else 0)
-        for r in range(4):
+        for r in range(5):
             self.grid_frame.rowconfigure(r, weight=1 if r < nrows else 0)
         for slot in range(MAX_SLOTS_IN_GRID):
             cell = self.grid_cells[slot][0]
@@ -1814,6 +1830,7 @@ class FrameSelectionWindow:
         ci = self.selected_collection_idx
         for fi in page_indices:
             self.keep[(ci, fi)] = True
+        self.page_action_hint.config(text="Kept all thumbnails on this page (shortcut: S keep, D delete).")
         self._refresh_grid()
         self._update_selection_count()
 
@@ -1824,6 +1841,7 @@ class FrameSelectionWindow:
         ci = self.selected_collection_idx
         for fi in page_indices:
             self.keep[(ci, fi)] = False
+        self.page_action_hint.config(text="Deleted all thumbnails on this page from selection (shortcut: S keep, D delete).")
         self._refresh_grid()
         self._update_selection_count()
 
