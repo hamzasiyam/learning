@@ -261,6 +261,36 @@ def format_bytes(num_bytes: float) -> str:
     return f"{num_bytes:.1f} GB"
 
 
+def make_unique_output_dir(base_dir: str) -> str:
+    """Return a directory path that does not currently exist."""
+    if not os.path.exists(base_dir):
+        return base_dir
+    n = 2
+    while True:
+        candidate = f"{base_dir}_{n}"
+        if not os.path.exists(candidate):
+            return candidate
+        n += 1
+
+
+def export_images_as_png(image_paths: List[str], output_dir: str, progress_callback=None) -> str:
+    """Export image paths to PNG files in a dedicated folder."""
+    os.makedirs(output_dir, exist_ok=True)
+    total = len(image_paths)
+    for i, img_path in enumerate(image_paths):
+        if progress_callback:
+            progress_callback(i, total, f"Exporting PNG {i + 1} of {total}")
+        frame = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
+        if frame is None:
+            raise RuntimeError(f"Could not read image for PNG export: {os.path.basename(img_path)}")
+        out_path = os.path.join(output_dir, f"frame_{i + 1:04d}.png")
+        if not cv2.imwrite(out_path, frame):
+            raise RuntimeError(f"Could not write PNG file: {os.path.basename(out_path)}")
+    if progress_callback:
+        progress_callback(total, total, "PNG export complete")
+    return output_dir
+
+
 def estimate_video_pdf_size(video_path, seconds_step, max_width, quality):
     with suppress_ffmpeg_stderr():
         cap = cv2.VideoCapture(video_path)
@@ -1444,6 +1474,13 @@ class FrameSelectionWindow:
             activebackground="#2c3e50", activeforeground="white", font=("", 8)
         ).pack(anchor="w", padx=10, pady=(2, 0))
 
+        self.export_pngs_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            c5, text="Also export selected frames as PNG files", variable=self.export_pngs_var,
+            bg="#2c3e50", fg="white", selectcolor="#1e2e3e",
+            activebackground="#2c3e50", activeforeground="white", font=("", 8)
+        ).pack(anchor="w", padx=10, pady=(2, 0))
+
         split_row = tk.Frame(c5, bg="#2c3e50")
         split_row.pack(fill="x", padx=10, pady=(0, 2))
         tk.Label(split_row, text="Max size per file (MB):", bg="#2c3e50",
@@ -2316,6 +2353,7 @@ class FrameSelectionWindow:
                 return
 
         split_enabled = self.split_var.get()
+        export_pngs = self.export_pngs_var.get()
         target_size_mb = 10.0
         if split_enabled:
             try:
@@ -2378,6 +2416,20 @@ class FrameSelectionWindow:
                         f"PDF saved as:\n{os.path.basename(output_path)}\n\n"
                         f"Contains {len(selected)} frames + {len(self.extra_image_paths)} extra images"
                     )
+
+                if export_pngs and selected:
+                    pdf_base = os.path.splitext(os.path.basename(output_path))[0]
+                    png_dir_base = os.path.join(
+                        os.path.dirname(output_path),
+                        f"{pdf_base}_selected_frames_png"
+                    )
+                    png_dir = make_unique_output_dir(png_dir_base)
+                    export_images_as_png(selected, png_dir, progress_callback=on_progress)
+                    done_msg += (
+                        f"\n\nSelected frames were also exported as PNG files in:\n"
+                        f"{os.path.basename(png_dir)}"
+                    )
+
                 self.win.after(0, lambda: messagebox.showinfo("PDF Created Successfully", done_msg))
                 try:
                     ui_call(ui_enable_open_location, True)
