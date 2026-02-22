@@ -273,17 +273,42 @@ def make_unique_output_dir(base_dir: str) -> str:
         n += 1
 
 
-def export_images_as_png(image_paths: List[str], output_dir: str, progress_callback=None) -> str:
-    """Export image paths to PNG files in a dedicated folder."""
+def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int) -> np.ndarray:
+    """Add a black bottom bar with white page number text to match PDF pages."""
+    if bar_height <= 0:
+        return image
+
+    h, w = image.shape[:2]
+    if image.ndim == 2:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    elif image.shape[2] == 4:
+        image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+
+    canvas = np.zeros((h + bar_height, w, 3), dtype=np.uint8)
+    canvas[bar_height:, :] = image
+
+    text = f"Page {page_num}"
+    text_x = 12
+    text_y = int(bar_height * 0.75)
+    cv2.putText(canvas, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX,
+                0.6, (255, 255, 255), 2, cv2.LINE_AA)
+    return canvas
+
+
+def export_images_as_png(image_paths: List[str], output_dir: str, progress_callback=None,
+                         bar_height: int = 36, start_page_number: int = 1) -> str:
+    """Export image paths to PNG files with page bars, named by page number."""
     os.makedirs(output_dir, exist_ok=True)
     total = len(image_paths)
     for i, img_path in enumerate(image_paths):
+        page_num = start_page_number + i
         if progress_callback:
             progress_callback(i, total, f"Exporting PNG {i + 1} of {total}")
         frame = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
         if frame is None:
             raise RuntimeError(f"Could not read image for PNG export: {os.path.basename(img_path)}")
-        out_path = os.path.join(output_dir, f"frame_{i + 1:04d}.png")
+        frame = add_page_number_bar(frame, page_num=page_num, bar_height=bar_height)
+        out_path = os.path.join(output_dir, f"Page {page_num}.png")
         if not cv2.imwrite(out_path, frame):
             raise RuntimeError(f"Could not write PNG file: {os.path.basename(out_path)}")
     if progress_callback:
@@ -2424,7 +2449,13 @@ class FrameSelectionWindow:
                         f"{pdf_base}_selected_frames_png"
                     )
                     png_dir = make_unique_output_dir(png_dir_base)
-                    export_images_as_png(selected, png_dir, progress_callback=on_progress)
+                    export_images_as_png(
+                        selected,
+                        png_dir,
+                        progress_callback=on_progress,
+                        bar_height=PAGE_NUMBER_BAR_PTS,
+                        start_page_number=1,
+                    )
                     done_msg += (
                         f"\n\nSelected frames were also exported as PNG files in:\n"
                         f"{os.path.basename(png_dir)}"
