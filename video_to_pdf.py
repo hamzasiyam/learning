@@ -285,11 +285,11 @@ def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int) -> np
         image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
 
     canvas = np.zeros((h + bar_height, w, 3), dtype=np.uint8)
-    canvas[bar_height:, :] = image
+    canvas[:h, :] = image
 
     text = f"Page {page_num}"
     text_x = 12
-    text_y = int(bar_height * 0.75)
+    text_y = h + int(bar_height * 0.75)
     cv2.putText(canvas, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX,
                 0.6, (255, 255, 255), 2, cv2.LINE_AA)
     return canvas
