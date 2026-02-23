@@ -109,8 +109,8 @@ Merges your pasted image links with one or more CSV sheets containing **Location
 - Click **Merge with Location/Note CSVs** and select multiple CSV files.
 - Each selected CSV row is read from `Location` and `Note` columns (rows with partial data are still included).
 - The app matches `Location` to page number from link filename (`Page-1` -> `1`).
-- Output CSV columns are: **Highlight Location**, **Note**.
-- `Highlight Location` is built as `<matched_link> <location>` when both exist.
+- Output CSV columns are: **Highlight**, **Location**, **Note**.
+- `Highlight` contains the matched image link and `Location` stays in its own separate column.
 
 ---
 
@@ -122,4 +122,4 @@ Merges your pasted image links with one or more CSV sheets containing **Location
 | **merge_csv**       | Multiple CSVs ? one CSV (Title, Author, Highlight, Note). |
 | **merge_pdf.py**    | Multiple PDFs ? one PDF; drag-and-drop reorder. |
 | **quiz_pdf.py**     | Folder of images ? one PDF with size estimate and quality presets. |
-| **links_to_csv.py** | Pasted image links + multiple Location/Note CSVs ? merged CSV with Highlight Location and Note. |
+| **links_to_csv.py** | Pasted image links + multiple Location/Note CSVs ? merged CSV with Highlight, Location, and Note columns. |

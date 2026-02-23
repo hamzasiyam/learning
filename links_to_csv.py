@@ -22,7 +22,10 @@ def sanitize_csv_text(value: str) -> str:
     """Normalize free text so it is safe to write into CSV cells."""
     if not value:
         return ""
-    cleaned = re.sub(r"[\x00-\x1f\x7f]", "", str(value))
+    cleaned = str(value)
+    # Fix common mojibake sequences seen when UTF-8 bullet text is decoded incorrectly.
+    cleaned = cleaned.replace("â€¢", "•")
+    cleaned = re.sub(r"[\x00-\x1f\x7f]", "", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     if cleaned.startswith(FORMULA_PREFIXES):
         cleaned = "'" + cleaned
@@ -80,7 +83,7 @@ class LinkCsvBuilderApp:
         hint = (
             "Example link: https://i.ibb.co/HfL7smbV/Page-1.png\n"
             "Then click 'Merge with Location/Note CSVs' to select multiple CSV files.\n"
-            "Output columns: Highlight Location, Note."
+            "Output columns: Highlight, Location, Note."
         )
         tk.Label(body, text=hint, fg="#555").pack(anchor="w")
 
@@ -156,16 +159,10 @@ class LinkCsvBuilderApp:
             if not mapped_link and location:
                 mapped_link = page_to_link.get(extract_page_number(location), "")
 
-            if mapped_link and location:
-                highlight_location = f"{mapped_link} {location}"
-            elif mapped_link:
-                highlight_location = mapped_link
-            else:
-                highlight_location = location
-
             output_rows.append(
                 {
-                    "Highlight Location": sanitize_csv_text(highlight_location),
+                    "Highlight": sanitize_csv_text(mapped_link),
+                    "Location": sanitize_csv_text(location),
                     "Note": sanitize_csv_text(note),
                 }
             )
@@ -175,8 +172,8 @@ class LinkCsvBuilderApp:
             return
 
         try:
-            with open(output_path, "w", newline="", encoding="utf-8") as handle:
-                writer = csv.DictWriter(handle, fieldnames=["Highlight Location", "Note"])
+            with open(output_path, "w", newline="", encoding="utf-8-sig") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["Highlight", "Location", "Note"])
                 writer.writeheader()
                 writer.writerows(output_rows)
         except Exception as exc:
