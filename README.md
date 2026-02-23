@@ -99,18 +99,20 @@ Watches a folder for image files and can compile them into one PDF with size opt
 
 ### 5. Links to CSV (`links_to_csv.py`)
 
-Creates a CSV with columns **Highlight**, **Title**, and **Author** from a pasted list of image links.
+Creates a CSV with columns **Location** and **Note** from pasted links (and optional note text per line).
 
 **Run:** `python links_to_csv.py`
 
 **What it does:**
 
-- Enter **Title** and **Author** in the GUI.
-- Paste links (one per line).
-- Each link is converted to Markdown image format for Highlight values, e.g. `![](https://...png)`.
-- The **Title** and **Author** columns are filled directly from your GUI inputs (as separate columns).
-- Title and author input are sanitized before writing to CSV (control characters removed and formula-like prefixes escaped).
-- Save as a CSV file from the save dialog.
+- Paste one row per line in any of these formats:
+  - `https://.../Page-5.png`
+  - `https://.../Page-5.png<TAB>Note`
+  - `![](https://.../Page-5.png) | Note`
+- The app extracts the page number from each link (for example `Page-5.png` → `Location = 5`).
+- The rest of the line becomes **Note** when provided.
+- Output CSV columns are exactly: **Location**, **Note**.
+- Text is sanitized before writing (control characters removed and formula-like prefixes escaped).
 
 ---
 
@@ -122,4 +124,4 @@ Creates a CSV with columns **Highlight**, **Title**, and **Author** from a paste
 | **merge_csv**       | Multiple CSVs ? one CSV (Title, Author, Highlight, Note). |
 | **merge_pdf.py**    | Multiple PDFs ? one PDF; drag-and-drop reorder. |
 | **quiz_pdf.py**     | Folder of images ? one PDF with size estimate and quality presets. |
-| **links_to_csv.py** | Pasted links ? one CSV with Highlight markdown plus separate Title and Author columns from GUI fields. |
+| **links_to_csv.py** | Pasted links (+ optional inline notes) ? one CSV with Location and Note columns. |

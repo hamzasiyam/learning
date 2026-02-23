@@ -6,16 +6,45 @@ from tkinter import filedialog, messagebox
 FORMULA_PREFIXES = ("=", "+", "-", "@")
 
 
-def sanitize_filename(name: str, default: str = "highlights") -> str:
-    if not name or not name.strip():
-        return default
-    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", name.strip())
-    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
-    return cleaned or default
 
 
-def link_to_markdown_image(url: str) -> str:
-    return f"![]({url})"
+def extract_page_number(url: str) -> str:
+    """Extract a page number from a URL like .../Page-5.png."""
+    if not url:
+        return ""
+    match = re.search(r"page[-_\s]?(\d+)", url, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    trailing_num = re.search(r"(\d+)(?:\.[a-zA-Z0-9]+)?$", url)
+    return trailing_num.group(1) if trailing_num else ""
+
+
+def split_link_and_note(line: str):
+    """Parse one pasted line into URL and note.
+
+    Accepted formats:
+      - URL
+      - URL<TAB>Note
+      - URL | Note
+      - URL , Note
+      - markdown image + note, e.g. ![](https://...png)\tNote
+    """
+    raw = line.strip()
+    if not raw:
+        return "", ""
+
+    md_match = re.search(r"!\[.*?\]\((https?://[^\s)]+)\)", raw)
+    if md_match:
+        url = md_match.group(1)
+        rest = raw[md_match.end() :].strip(" \t|,-")
+        return url, rest
+
+    for delimiter in ("\t", " | ", " , ", "|", ","):
+        if delimiter in raw:
+            left, right = raw.split(delimiter, 1)
+            return left.strip(), right.strip()
+
+    return raw, ""
 
 
 def sanitize_csv_text(value: str) -> str:
@@ -32,39 +61,26 @@ def sanitize_csv_text(value: str) -> str:
 class LinkCsvBuilderApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Link List to CSV")
+        self.root.title("Links to Location/Note CSV")
         self.root.geometry("760x560")
-
-        self.title_var = tk.StringVar()
-        self.author_var = tk.StringVar()
 
         self._build_ui()
 
     def _build_ui(self):
-        meta = tk.Frame(self.root)
-        meta.pack(fill="x", padx=12, pady=(12, 6))
-
-        tk.Label(meta, text="Title").grid(row=0, column=0, sticky="w")
-        tk.Entry(meta, textvariable=self.title_var, width=72).grid(
-            row=0, column=1, padx=8, pady=3, sticky="w"
-        )
-
-        tk.Label(meta, text="Author").grid(row=1, column=0, sticky="w")
-        tk.Entry(meta, textvariable=self.author_var, width=72).grid(
-            row=1, column=1, padx=8, pady=3, sticky="w"
-        )
-
         body = tk.Frame(self.root)
-        body.pack(fill="both", expand=True, padx=12, pady=6)
+        body.pack(fill="both", expand=True, padx=12, pady=(12, 6))
 
-        tk.Label(body, text="Paste links below (one per line)").pack(anchor="w")
+        tk.Label(body, text="Paste link + note rows below").pack(anchor="w")
 
         self.links_text = tk.Text(body, wrap="word", height=18)
         self.links_text.pack(fill="both", expand=True, pady=(4, 8))
 
         hint = (
-            "Each link becomes a Highlight entry in this format: ![](https://...png).\n"
-            "CSV columns are: Highlight, Title, Author."
+            "Accepted formats per line:\n"
+            "• https://.../Page-5.png\n"
+            "• https://.../Page-5.png<TAB>Your note\n"
+            "• ![](https://.../Page-5.png) | Your note\n"
+            "Output CSV columns are: Location, Note (Location is page number parsed from link)."
         )
         tk.Label(body, text=hint, fg="#555").pack(anchor="w")
 
@@ -79,19 +95,9 @@ class LinkCsvBuilderApp:
         )
 
     def clear_all(self):
-        self.title_var.set("")
-        self.author_var.set("")
         self.links_text.delete("1.0", tk.END)
 
     def build_csv(self):
-        raw_title = self.title_var.get()
-        title = sanitize_csv_text(raw_title)
-        author = sanitize_csv_text(self.author_var.get())
-
-        if not title:
-            messagebox.showerror("Missing title", "Please enter a title.")
-            return
-
         raw_lines = self.links_text.get("1.0", tk.END).splitlines()
         links = [line.strip() for line in raw_lines if line.strip()]
 
@@ -99,7 +105,7 @@ class LinkCsvBuilderApp:
             messagebox.showerror("No links", "Please paste at least one link.")
             return
 
-        default_name = sanitize_filename(raw_title) + ".csv"
+        default_name = "location_note.csv"
         output_path = filedialog.asksaveasfilename(
             title="Save CSV",
             defaultextension=".csv",
@@ -111,14 +117,14 @@ class LinkCsvBuilderApp:
 
         try:
             with open(output_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["Highlight", "Title", "Author"])
+                writer = csv.DictWriter(f, fieldnames=["Location", "Note"])
                 writer.writeheader()
                 for link in links:
+                    url, note = split_link_and_note(link)
                     writer.writerow(
                         {
-                            "Highlight": sanitize_csv_text(link_to_markdown_image(link)),
-                            "Title": sanitize_csv_text(title),
-                            "Author": sanitize_csv_text(author),
+                            "Location": sanitize_csv_text(extract_page_number(url)),
+                            "Note": sanitize_csv_text(note),
                         }
                     )
         except Exception as exc:
