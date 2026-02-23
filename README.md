@@ -99,21 +99,18 @@ Watches a folder for image files and can compile them into one PDF with size opt
 
 ### 5. Links to CSV (`links_to_csv.py`)
 
-Creates a CSV with columns **Location** and **Note** from pasted links (and optional note text per line).
+Merges your pasted image links with one or more CSV sheets containing **Location** and **Note**.
 
 **Run:** `python links_to_csv.py`
 
 **What it does:**
 
-- Paste one row per line in any of these formats:
-  - `https://.../Page-5.png`
-  - `https://.../Page-5.png<TAB>Note`
-  - `![](https://.../Page-5.png) | Note`
-- The app extracts the page number from each link (for example `Page-5.png` → `Location = 5`).
-- The rest of the line becomes **Note** when provided.
-- Output CSV columns are exactly: **Location**, **Note**.
-- You can also click **Merge Location/Note CSVs** to select multiple existing CSV sheets (with `Location` and `Note` columns) and combine them into one file.
-- Text is sanitized before writing (control characters removed and formula-like prefixes escaped).
+- Paste image links (one per line), e.g. `https://i.ibb.co/HfL7smbV/Page-1.png`.
+- Click **Merge with Location/Note CSVs** and select multiple CSV files.
+- Each selected CSV row is read from `Location` and `Note` columns (rows with partial data are still included).
+- The app matches `Location` to page number from link filename (`Page-1` -> `1`).
+- Output CSV columns are: **Highlight Location**, **Note**.
+- `Highlight Location` is built as `<matched_link> <location>` when both exist.
 
 ---
 
@@ -125,4 +122,4 @@ Creates a CSV with columns **Location** and **Note** from pasted links (and opti
 | **merge_csv**       | Multiple CSVs ? one CSV (Title, Author, Highlight, Note). |
 | **merge_pdf.py**    | Multiple PDFs ? one PDF; drag-and-drop reorder. |
 | **quiz_pdf.py**     | Folder of images ? one PDF with size estimate and quality presets. |
-| **links_to_csv.py** | Pasted links (+ optional inline notes) ? one CSV with Location and Note columns. |
+| **links_to_csv.py** | Pasted image links + multiple Location/Note CSVs ? merged CSV with Highlight Location and Note. |
