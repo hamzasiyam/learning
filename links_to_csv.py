@@ -3,6 +3,8 @@ import re
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
+FORMULA_PREFIXES = ("=", "+", "-", "@")
+
 
 def sanitize_filename(name: str, default: str = "highlights") -> str:
     if not name or not name.strip():
@@ -14,6 +16,17 @@ def sanitize_filename(name: str, default: str = "highlights") -> str:
 
 def link_to_markdown_image(url: str) -> str:
     return f"![]({url})"
+
+
+def sanitize_csv_text(value: str) -> str:
+    """Normalize free text so it is safe to write into CSV cells."""
+    if not value:
+        return ""
+    cleaned = re.sub(r"[\x00-\x1f\x7f]", "", value)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if cleaned.startswith(FORMULA_PREFIXES):
+        cleaned = "'" + cleaned
+    return cleaned
 
 
 class LinkCsvBuilderApp:
@@ -71,8 +84,9 @@ class LinkCsvBuilderApp:
         self.links_text.delete("1.0", tk.END)
 
     def build_csv(self):
-        title = self.title_var.get().strip()
-        author = self.author_var.get().strip()
+        raw_title = self.title_var.get()
+        title = sanitize_csv_text(raw_title)
+        author = sanitize_csv_text(self.author_var.get())
 
         if not title:
             messagebox.showerror("Missing title", "Please enter a title.")
@@ -87,7 +101,7 @@ class LinkCsvBuilderApp:
 
         title_value = f"{title} — {author}" if author else title
 
-        default_name = sanitize_filename(title) + ".csv"
+        default_name = sanitize_filename(raw_title) + ".csv"
         output_path = filedialog.asksaveasfilename(
             title="Save CSV",
             defaultextension=".csv",
@@ -104,8 +118,8 @@ class LinkCsvBuilderApp:
                 for link in links:
                     writer.writerow(
                         {
-                            "Highlight": link_to_markdown_image(link),
-                            "Title": title_value,
+                            "Highlight": sanitize_csv_text(link_to_markdown_image(link)),
+                            "Title": sanitize_csv_text(title_value),
                         }
                     )
         except Exception as exc:

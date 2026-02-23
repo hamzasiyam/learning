@@ -109,6 +109,7 @@ Creates a CSV with columns **Highlight** and **Title** from a pasted list of ima
 - Paste links (one per line).
 - Each link is converted to Markdown image format for Highlight values, e.g. `![](https://...png)`.
 - The **Title** column is filled with your title (and author appended as `Title — Author` if provided).
+- Title and author input are sanitized before writing to CSV (control characters removed and formula-like prefixes escaped).
 - Save as a CSV file from the save dialog.
 
 ---
