@@ -112,6 +112,7 @@ Creates a CSV with columns **Location** and **Note** from pasted links (and opti
 - The app extracts the page number from each link (for example `Page-5.png` → `Location = 5`).
 - The rest of the line becomes **Note** when provided.
 - Output CSV columns are exactly: **Location**, **Note**.
+- You can also click **Merge Location/Note CSVs** to select multiple existing CSV sheets (with `Location` and `Note` columns) and combine them into one file.
 - Text is sanitized before writing (control characters removed and formula-like prefixes escaped).
 
 ---
