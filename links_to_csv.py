@@ -64,7 +64,7 @@ class LinkCsvBuilderApp:
 
         hint = (
             "Each link becomes a Highlight entry in this format: ![](https://...png).\n"
-            "CSV columns are: Highlight, Title."
+            "CSV columns are: Highlight, Title, Author."
         )
         tk.Label(body, text=hint, fg="#555").pack(anchor="w")
 
@@ -99,8 +99,6 @@ class LinkCsvBuilderApp:
             messagebox.showerror("No links", "Please paste at least one link.")
             return
 
-        title_value = f"{title} — {author}" if author else title
-
         default_name = sanitize_filename(raw_title) + ".csv"
         output_path = filedialog.asksaveasfilename(
             title="Save CSV",
@@ -113,13 +111,14 @@ class LinkCsvBuilderApp:
 
         try:
             with open(output_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["Highlight", "Title"])
+                writer = csv.DictWriter(f, fieldnames=["Highlight", "Title", "Author"])
                 writer.writeheader()
                 for link in links:
                     writer.writerow(
                         {
                             "Highlight": sanitize_csv_text(link_to_markdown_image(link)),
-                            "Title": sanitize_csv_text(title_value),
+                            "Title": sanitize_csv_text(title),
+                            "Author": sanitize_csv_text(author),
                         }
                     )
         except Exception as exc:
