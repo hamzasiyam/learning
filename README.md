@@ -109,7 +109,7 @@ Merges your pasted image links with one or more CSV sheets containing **Location
 - Click **Merge with Location/Note CSVs** and select multiple CSV files.
 - Each selected CSV row is read from `Location` and `Note` columns (rows with partial data are still included).
 - Notes with multiple `•` bullets are auto-formatted with a blank line between bullets in output.
-- Rows with an empty note are automatically filled with `.add note`.
+- Rows with an empty note are automatically filled with `.addnote`.
 - The app matches `Location` to page number from link filename (`Page-1` -> `1`).
 - Output CSV columns are: **Highlight**, **Title**, **Author**, **Location**, **Note** (where Highlight is `![](link)`).
 - The export keeps pasted-link order, always outputs one row per pasted link, includes unmatched CSV rows afterward with blank Highlight, and writes Title/Author on every row.

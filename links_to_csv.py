@@ -45,7 +45,7 @@ def format_note_bullets(note: str) -> str:
 def note_or_placeholder(note: str) -> str:
     """Return note text or the required placeholder when note is missing."""
     formatted = format_note_bullets(note)
-    return formatted if formatted else ".add note"
+    return formatted if formatted else ".addnote"
 
 def parse_link_line(line: str) -> str:
     """Return URL from a pasted line (plain URL or markdown image)."""
