@@ -40,6 +40,13 @@ def format_note_bullets(note: str) -> str:
     return text.lstrip()
 
 
+
+
+def note_or_placeholder(note: str) -> str:
+    """Return note text or the required placeholder when note is missing."""
+    formatted = format_note_bullets(note)
+    return formatted if formatted else ".add note"
+
 def parse_link_line(line: str) -> str:
     """Return URL from a pasted line (plain URL or markdown image)."""
     raw = line.strip()
@@ -199,7 +206,7 @@ class LinkCsvBuilderApp:
                     "Title": title,
                     "Author": author,
                     "Location": sanitize_csv_text(location),
-                    "Note": combined_note,
+                    "Note": note_or_placeholder(combined_note),
                 }
             )
 
@@ -212,7 +219,7 @@ class LinkCsvBuilderApp:
                     "Title": title,
                     "Author": author,
                     "Location": sanitize_csv_text(key),
-                    "Note": "\n\n".join([n for n in notes if n]),
+                    "Note": note_or_placeholder("\n\n".join([n for n in notes if n])),
                 }
             )
 
@@ -223,7 +230,7 @@ class LinkCsvBuilderApp:
                     "Title": title,
                     "Author": author,
                     "Location": sanitize_csv_text(row.get("Location", "")),
-                    "Note": row.get("Note", ""),
+                    "Note": note_or_placeholder(row.get("Note", "")),
                 }
             )
 
