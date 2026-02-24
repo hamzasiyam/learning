@@ -32,6 +32,16 @@ def sanitize_csv_text(value: str) -> str:
     return cleaned
 
 
+
+
+def format_note_bullets(note: str) -> str:
+    """Ensure bullet notes are separated by a blank line."""
+    if not note:
+        return ""
+    text = re.sub(r"\s*•\s*", "\n\n• ", note)
+    return text.lstrip()
+
+
 def parse_link_line(line: str) -> str:
     """Return URL from a pasted line (plain URL or markdown image)."""
     raw = line.strip()
@@ -163,7 +173,7 @@ class LinkCsvBuilderApp:
                 {
                     "Highlight": sanitize_csv_text(mapped_link),
                     "Location": sanitize_csv_text(location),
-                    "Note": sanitize_csv_text(note),
+                    "Note": format_note_bullets(sanitize_csv_text(note)),
                 }
             )
 

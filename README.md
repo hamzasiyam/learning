@@ -108,6 +108,7 @@ Merges your pasted image links with one or more CSV sheets containing **Location
 - Paste image links (one per line), e.g. `https://i.ibb.co/HfL7smbV/Page-1.png`.
 - Click **Merge with Location/Note CSVs** and select multiple CSV files.
 - Each selected CSV row is read from `Location` and `Note` columns (rows with partial data are still included).
+- Notes with multiple `•` bullets are auto-formatted with a blank line between bullets in output.
 - The app matches `Location` to page number from link filename (`Page-1` -> `1`).
 - Output CSV columns are: **Highlight**, **Location**, **Note**.
 - `Highlight` contains the matched image link and `Location` stays in its own separate column.
