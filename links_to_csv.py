@@ -77,11 +77,26 @@ class LinkCsvBuilderApp:
         self.root = root
         self.root.title("Links + Location/Note CSV Merger")
         self.root.geometry("820x600")
+        self.title_var = tk.StringVar()
+        self.author_var = tk.StringVar()
         self._build_ui()
 
     def _build_ui(self):
+        meta = tk.Frame(self.root)
+        meta.pack(fill="x", padx=12, pady=(12, 4))
+
+        tk.Label(meta, text="Title").grid(row=0, column=0, sticky="w")
+        tk.Entry(meta, textvariable=self.title_var, width=72).grid(
+            row=0, column=1, padx=8, pady=3, sticky="w"
+        )
+
+        tk.Label(meta, text="Author").grid(row=1, column=0, sticky="w")
+        tk.Entry(meta, textvariable=self.author_var, width=72).grid(
+            row=1, column=1, padx=8, pady=3, sticky="w"
+        )
+
         body = tk.Frame(self.root)
-        body.pack(fill="both", expand=True, padx=12, pady=(12, 6))
+        body.pack(fill="both", expand=True, padx=12, pady=(4, 6))
 
         tk.Label(body, text="Paste image links below (one per line)").pack(anchor="w")
 
@@ -91,7 +106,7 @@ class LinkCsvBuilderApp:
         hint = (
             "Example link: https://i.ibb.co/HfL7smbV/Page-1.png\n"
             "Then click 'Merge with Location/Note CSVs' to select multiple CSV files.\n"
-            "Output columns: Highlight, Location, Note. Highlight is written as ![](link)."
+            "Output columns: Highlight, Title, Author, Location, Note."
         )
         tk.Label(body, text=hint, fg="#555").pack(anchor="w")
 
@@ -109,6 +124,8 @@ class LinkCsvBuilderApp:
         )
 
     def clear_all(self):
+        self.title_var.set("")
+        self.author_var.set("")
         self.links_text.delete("1.0", tk.END)
 
     def _prompt_output_path(self, initialfile: str = "highlight_location_note.csv"):
@@ -137,6 +154,9 @@ class LinkCsvBuilderApp:
         if links is None:
             messagebox.showerror("No links", "Please paste at least one image link.")
             return
+
+        title = sanitize_csv_text(self.title_var.get())
+        author = sanitize_csv_text(self.author_var.get())
 
         csv_paths = filedialog.askopenfilenames(
             title="Select Location/Note CSV files",
@@ -176,6 +196,8 @@ class LinkCsvBuilderApp:
             output_rows.append(
                 {
                     "Highlight": sanitize_csv_text(f"![]({link.get('url', '')})"),
+                    "Title": title,
+                    "Author": author,
                     "Location": sanitize_csv_text(location),
                     "Note": combined_note,
                 }
@@ -187,6 +209,8 @@ class LinkCsvBuilderApp:
             output_rows.append(
                 {
                     "Highlight": "",
+                    "Title": title,
+                    "Author": author,
                     "Location": sanitize_csv_text(key),
                     "Note": "\n\n".join([n for n in notes if n]),
                 }
@@ -196,6 +220,8 @@ class LinkCsvBuilderApp:
             output_rows.append(
                 {
                     "Highlight": "",
+                    "Title": title,
+                    "Author": author,
                     "Location": sanitize_csv_text(row.get("Location", "")),
                     "Note": row.get("Note", ""),
                 }
@@ -207,7 +233,9 @@ class LinkCsvBuilderApp:
 
         try:
             with open(output_path, "w", newline="", encoding="utf-8-sig") as handle:
-                writer = csv.DictWriter(handle, fieldnames=["Highlight", "Location", "Note"])
+                writer = csv.DictWriter(
+                    handle, fieldnames=["Highlight", "Title", "Author", "Location", "Note"]
+                )
                 writer.writeheader()
                 writer.writerows(output_rows)
         except Exception as exc:

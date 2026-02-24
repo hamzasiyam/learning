@@ -110,8 +110,8 @@ Merges your pasted image links with one or more CSV sheets containing **Location
 - Each selected CSV row is read from `Location` and `Note` columns (rows with partial data are still included).
 - Notes with multiple `•` bullets are auto-formatted with a blank line between bullets in output.
 - The app matches `Location` to page number from link filename (`Page-1` -> `1`).
-- Output CSV columns are: **Highlight**, **Location**, **Note** (where Highlight is `![](link)`).
-- The export keeps pasted-link order, always outputs one row per pasted link, and includes unmatched CSV rows afterward with blank Highlight.
+- Output CSV columns are: **Highlight**, **Title**, **Author**, **Location**, **Note** (where Highlight is `![](link)`).
+- The export keeps pasted-link order, always outputs one row per pasted link, includes unmatched CSV rows afterward with blank Highlight, and writes Title/Author on every row.
 
 ---
 
@@ -123,4 +123,4 @@ Merges your pasted image links with one or more CSV sheets containing **Location
 | **merge_csv**       | Multiple CSVs ? one CSV (Title, Author, Highlight, Note). |
 | **merge_pdf.py**    | Multiple PDFs ? one PDF; drag-and-drop reorder. |
 | **quiz_pdf.py**     | Folder of images ? one PDF with size estimate and quality presets. |
-| **links_to_csv.py** | Pasted image links + multiple Location/Note CSVs ? merged CSV with Highlight, Location, and Note columns. |
+| **links_to_csv.py** | Pasted image links + multiple Location/Note CSVs ? merged CSV with Highlight, Title, Author, Location, and Note columns. |
