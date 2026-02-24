@@ -99,18 +99,19 @@ Watches a folder for image files and can compile them into one PDF with size opt
 
 ### 5. Links to CSV (`links_to_csv.py`)
 
-Creates a CSV with columns **Highlight**, **Title**, and **Author** from a pasted list of image links.
+Merges your pasted image links with one or more CSV sheets containing **Location** and **Note**.
 
 **Run:** `python links_to_csv.py`
 
 **What it does:**
 
-- Enter **Title** and **Author** in the GUI.
-- Paste links (one per line).
-- Each link is converted to Markdown image format for Highlight values, e.g. `![](https://...png)`.
-- The **Title** and **Author** columns are filled directly from your GUI inputs (as separate columns).
-- Title and author input are sanitized before writing to CSV (control characters removed and formula-like prefixes escaped).
-- Save as a CSV file from the save dialog.
+- Paste image links (one per line), e.g. `https://i.ibb.co/HfL7smbV/Page-1.png`.
+- Click **Merge with Location/Note CSVs** and select multiple CSV files.
+- Each selected CSV row is read from `Location` and `Note` columns (rows with partial data are still included).
+- Notes with multiple `•` bullets are auto-formatted with a blank line between bullets in output.
+- The app matches `Location` to page number from link filename (`Page-1` -> `1`).
+- Output CSV columns are: **Highlight**, **Location**, **Note** (where Highlight is `![](link)`).
+- The export keeps pasted-link order, always outputs one row per pasted link, and includes unmatched CSV rows afterward with blank Highlight.
 
 ---
 
@@ -122,4 +123,4 @@ Creates a CSV with columns **Highlight**, **Title**, and **Author** from a paste
 | **merge_csv**       | Multiple CSVs ? one CSV (Title, Author, Highlight, Note). |
 | **merge_pdf.py**    | Multiple PDFs ? one PDF; drag-and-drop reorder. |
 | **quiz_pdf.py**     | Folder of images ? one PDF with size estimate and quality presets. |
-| **links_to_csv.py** | Pasted links ? one CSV with Highlight markdown plus separate Title and Author columns from GUI fields. |
+| **links_to_csv.py** | Pasted image links + multiple Location/Note CSVs ? merged CSV with Highlight, Location, and Note columns. |
