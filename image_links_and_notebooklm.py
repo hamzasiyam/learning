@@ -112,7 +112,7 @@ class LinkCsvBuilderApp:
 
         hint = (
             "Example link: https://i.ibb.co/HfL7smbV/Page-1.png\n"
-            "Then click 'Merge with Location/Note CSVs' to select multiple CSV files.\n"
+            "Click 'Merge with Location/Note CSVs' to select CSVs (optional—cancel to export links only with .addnote).\n"
             "Output columns: Highlight, Title, Author, Location, Note."
         )
         tk.Label(body, text=hint, fg="#555").pack(anchor="w")
@@ -164,11 +164,9 @@ class LinkCsvBuilderApp:
         author = sanitize_csv_text(self.author_var.get())
 
         csv_paths = filedialog.askopenfilenames(
-            title="Select Location/Note CSV files",
+            title="Select Location/Note CSV files (optional - cancel to use links only)",
             filetypes=[("CSV files", "*.csv")],
         )
-        if not csv_paths:
-            return
 
         merged_rows = []
         for path in csv_paths:
@@ -247,10 +245,16 @@ class LinkCsvBuilderApp:
             messagebox.showerror("Error", f"Could not write merged CSV:\n{exc}")
             return
 
-        messagebox.showinfo(
-            "Done",
-            f"Merged {len(csv_paths)} files into {len(output_rows)} rows:\n{output_path}",
-        )
+        if csv_paths:
+            messagebox.showinfo(
+                "Done",
+                f"Merged {len(csv_paths)} files into {len(output_rows)} rows:\n{output_path}",
+            )
+        else:
+            messagebox.showinfo(
+                "Done",
+                f"Exported {len(output_rows)} rows (links only, .addnote):\n{output_path}",
+            )
 
 
 if __name__ == "__main__":
