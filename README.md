@@ -12,18 +12,18 @@ pip install -r requirements.txt
 
 **requirements.txt** includes: `opencv-python`, `reportlab`, `pypdf`, `pandas`.
 
-- **quiz_pdf.py** also needs **Pillow** (`pip install pillow`).
-- **merge_pdf.py** also needs **tkinterdnd2** for drag-and-drop (`pip install tkinterdnd2`).
+- **apps/quiz_pdf.py** also needs **Pillow** (`pip install pillow`).
+- **apps/merge_pdf.py** also needs **tkinterdnd2** for drag-and-drop (`pip install tkinterdnd2`).
 
 ---
 
 ## Programs
 
-### 1. Video to PDF (`video_to_pdf.py`)
+### 1. Video to PDF (`apps/video_to_pdf.py`)
 
 Turns videos (and optional PDFs) into one combined PDF, with optional frame selection and metadata for Readwise Reader.
 
-**Run:** `python video_to_pdf.py`
+**Run:** `python apps/video_to_pdf.py`
 
 **What it does:**
 
@@ -62,11 +62,11 @@ Merges several CSV files into one CSV with columns: **Title**, **Author**, **Hig
 
 ---
 
-### 3. Merge PDF (`merge_pdf.py`)
+### 3. Merge PDF (`apps/merge_pdf.py`)
 
 Merges multiple PDFs into one, in the order you choose. Supports **drag-and-drop** to reorder.
 
-**Run:** `python merge_pdf.py`
+**Run:** `python apps/merge_pdf.py`
 
 **What it does:**
 
@@ -79,11 +79,11 @@ Merges multiple PDFs into one, in the order you choose. Supports **drag-and-drop
 
 ---
 
-### 4. Quiz PDF / Folder watch ? Images to PDF (`quiz_pdf.py`)
+### 4. Quiz PDF / Folder watch ? Images to PDF (`apps/quiz_pdf.py`)
 
 Watches a folder for image files and can compile them into one PDF with size optimization and a size estimate.
 
-**Run:** `python quiz_pdf.py`
+**Run:** `python apps/quiz_pdf.py`
 
 **What it does:**
 
@@ -120,8 +120,17 @@ Merges your pasted image links with one or more CSV sheets containing **Location
 
 | Program        | Purpose |
 |----------------|--------|
-| **video_to_pdf.py** | Videos (+ optional PDFs) ? one PDF; optional frame selection and numbered pages; metadata for Readwise. |
+| **apps/video_to_pdf.py** | Videos (+ optional PDFs) ? one PDF; optional frame selection and numbered pages; metadata for Readwise. |
 | **merge_csv**       | Multiple CSVs ? one CSV (Title, Author, Highlight, Note). |
-| **merge_pdf.py**    | Multiple PDFs ? one PDF; drag-and-drop reorder. |
-| **quiz_pdf.py**     | Folder of images ? one PDF with size estimate and quality presets. |
+| **apps/merge_pdf.py**    | Multiple PDFs ? one PDF; drag-and-drop reorder. |
+| **apps/quiz_pdf.py**     | Folder of images ? one PDF with size estimate and quality presets. |
 | **links_to_csv.py** | Pasted image links + multiple Location/Note CSVs ? merged CSV with Highlight, Title, Author, Location, and Note columns. |
+
+---
+
+## Commenting Reference
+
+The codebase commenting style and methodology were guided by:
+
+- AI Programming with Python - Module Name: Commenting in Python  
+  [https://www.udacity.com/course/ai-programming-python-nanodegree--nd089](https://www.udacity.com/course/ai-programming-python-nanodegree--nd089)

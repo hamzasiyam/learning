@@ -1,3 +1,9 @@
+"""Main desktop workflow for converting videos/images/PDFs into PDF outputs.
+
+This module contains the legacy all-in-one implementation used by the launcher.
+Core reusable logic is also available in `modules.core.*` for modular imports.
+"""
+
 import os
 import re
 import sys
@@ -10,6 +16,14 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Dict
 
 import cv2
+from modules.core import config as cfg
+from modules.core import file_utils as futils
+from modules.core import pdf_utils as pdfm
+from modules.core import similarity as sim
+from modules.core import video_processing as vpm
+
+PdfReader = pdfm.PdfReader
+PdfWriter = pdfm.PdfWriter
 
 
 @contextmanager
@@ -34,12 +48,6 @@ from tkinter.ttk import Progressbar, Combobox
 
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
-
-try:
-    from pypdf import PdfReader, PdfWriter
-except Exception:
-    PdfReader = None
-    PdfWriter = None
 
 
 # =========================
@@ -816,6 +824,49 @@ def add_metadata_to_pdf(pdf_path, meta):
 # =========================
 # Queue + main GUI helpers
 # =========================
+PRESETS = cfg.PRESETS
+VIDEO_EXTS = cfg.VIDEO_EXTS
+IMAGE_EXTS = cfg.IMAGE_EXTS
+
+DEFAULT_THRESHOLD = cfg.DEFAULT_THRESHOLD
+SIM_COLOR_REPRESENTATIVE = cfg.SIM_COLOR_REPRESENTATIVE
+SIM_COLOR_VERY_SIMILAR = cfg.SIM_COLOR_VERY_SIMILAR
+SIM_COLOR_SIMILAR = cfg.SIM_COLOR_SIMILAR
+SIM_COLOR_SOMEWHAT_SIMILAR = cfg.SIM_COLOR_SOMEWHAT_SIMILAR
+SIM_COLOR_UNIQUE = cfg.SIM_COLOR_UNIQUE
+
+SimilarityGroup = sim.SimilarityGroup
+similarity_badge_color = sim.similarity_badge_color
+cluster_frames_by_similarity = sim.cluster_frames_by_similarity
+
+sanitize_filename = futils.sanitize_filename
+safe_filename = futils.safe_filename
+format_seconds = futils.format_seconds
+format_bytes = futils.format_bytes
+make_unique_output_dir = futils.make_unique_output_dir
+make_temp_dir_near_output = futils.make_temp_dir_near_output
+cleanup_dir = futils.cleanup_dir
+
+suppress_ffmpeg_stderr = vpm.suppress_ffmpeg_stderr
+resize_frame = vpm.resize_frame
+estimate_video_pdf_size = vpm.estimate_video_pdf_size
+video_to_temp_pdf = vpm.video_to_temp_pdf
+estimate_total_frames = vpm.estimate_total_frames
+extract_all_frames_from_videos = vpm.extract_all_frames_from_videos
+
+add_page_number_bar = pdfm.add_page_number_bar
+export_images_as_png = pdfm.export_images_as_png
+estimate_pdf_size_bytes = pdfm.estimate_pdf_size_bytes
+build_pdf_from_images = pdfm.build_pdf_from_images
+estimate_page_bytes = pdfm.estimate_page_bytes
+split_images_by_size = pdfm.split_images_by_size
+build_split_pdfs = pdfm.build_split_pdfs
+ensure_pdf_merge_available = pdfm.ensure_pdf_merge_available
+append_pdf_to_writer = pdfm.append_pdf_to_writer
+meta_to_pdf_metadata = pdfm.meta_to_pdf_metadata
+add_metadata_to_pdf = pdfm.add_metadata_to_pdf
+PdfWriter = pdfm.PdfWriter
+
 queue_items: List[QueueItem] = []
 
 
@@ -993,7 +1044,7 @@ def build_combined_pdf():
                         def prog(sv, sm, et, st):
                             ui_set_status(f"{label} — {st}")
                             ui_set_eta(et)
-                        video_to_temp_pdf(item.path, tmp, preset_name, meta, prog)
+                        video_to_temp_pdf(item.path, tmp, preset_name, meta, prog, stop_event=stop_event)
                         append_pdf_to_writer(writer, tmp)
                         done += 1
                         ui_set_progress(done, total)
@@ -1083,7 +1134,7 @@ def extract_frames_and_select():
 
             all_paths, video_collections = extract_all_frames_from_videos(
                 video_paths, preset_name, temp_dir,
-                progress_callback=prog, estimated_total=estimated
+                progress_callback=prog, estimated_total=estimated, stop_event=stop_event
             )
 
             if not all_paths:
