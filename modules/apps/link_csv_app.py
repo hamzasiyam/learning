@@ -31,6 +31,9 @@ class LinkCsvBuilderApp:
         self.root.geometry("820x600")
         self.title_var = tk.StringVar()
         self.author_var = tk.StringVar()
+        self.use_addnote_var = tk.BooleanVar(value=True)
+        self.use_custom_note_var = tk.BooleanVar(value=False)
+        self.custom_note_var = tk.StringVar()
         self._build_ui()
 
     def _build_ui(self):
@@ -45,6 +48,19 @@ class LinkCsvBuilderApp:
         tk.Entry(meta, textvariable=self.title_var, width=72).grid(row=0, column=1, padx=8, pady=3, sticky="w")
         tk.Label(meta, text="Author").grid(row=1, column=0, sticky="w")
         tk.Entry(meta, textvariable=self.author_var, width=72).grid(row=1, column=1, padx=8, pady=3, sticky="w")
+        tk.Checkbutton(
+            meta,
+            text="Use .addnote when note is empty",
+            variable=self.use_addnote_var,
+        ).grid(row=2, column=1, sticky="w", padx=8, pady=(4, 2))
+        tk.Checkbutton(
+            meta,
+            text="Use custom note for all rows",
+            variable=self.use_custom_note_var,
+            command=self._toggle_custom_note_input,
+        ).grid(row=3, column=1, sticky="w", padx=8, pady=(2, 2))
+        self.custom_note_entry = tk.Entry(meta, textvariable=self.custom_note_var, width=72, state="disabled")
+        self.custom_note_entry.grid(row=4, column=1, padx=8, pady=(2, 3), sticky="w")
 
         body = tk.Frame(self.root)
         body.pack(fill="both", expand=True, padx=12, pady=(4, 6))
@@ -53,7 +69,7 @@ class LinkCsvBuilderApp:
         self.links_text.pack(fill="both", expand=True, pady=(4, 8))
         hint = (
             "Example link: https://i.ibb.co/HfL7smbV/Page-1.png\n"
-            "Click 'Merge with Location/Note CSVs' to select CSVs (optional—cancel to export links only with .addnote).\n"
+            "Click 'Merge with Location/Note CSVs' to select CSVs (optional—cancel to export links only).\n"
             "Output columns: Highlight, Title, Author, Location, Note."
         )
         tk.Label(body, text=hint, fg="#555").pack(anchor="w")
@@ -63,6 +79,10 @@ class LinkCsvBuilderApp:
         tk.Button(actions, text="Merge with Location/Note CSVs", width=30, command=self.merge_with_location_note_csvs).pack(side="left")
         tk.Button(actions, text="Clear", width=12, command=self.clear_all).pack(side="left", padx=8)
 
+    def _toggle_custom_note_input(self):
+        """Enable or disable the custom note text entry."""
+        self.custom_note_entry.config(state="normal" if self.use_custom_note_var.get() else "disabled")
+
     def clear_all(self):
         """Clear pasted link text area.
 
@@ -70,6 +90,7 @@ class LinkCsvBuilderApp:
             None: Resets text input.
         """
         self.links_text.delete("1.0", tk.END)
+        self.custom_note_var.set("")
 
     def _prompt_output_path(self, initialfile: str = "highlight_location_note.csv"):
         """Show save dialog and return output CSV path.
@@ -120,6 +141,16 @@ class LinkCsvBuilderApp:
 
         title = sanitize_csv_text(self.title_var.get())
         author = sanitize_csv_text(self.author_var.get())
+        use_addnote = self.use_addnote_var.get()
+        use_custom_note = self.use_custom_note_var.get()
+        custom_note = sanitize_csv_text(self.custom_note_var.get())
+
+        if use_custom_note and not custom_note and not use_addnote:
+            messagebox.showerror(
+                "Custom note is empty",
+                "Enter a custom note, or enable .addnote for empty notes.",
+            )
+            return
 
         csv_paths = filedialog.askopenfilenames(
             title="Select Location/Note CSV files (optional - cancel to use links only)",
@@ -150,6 +181,11 @@ class LinkCsvBuilderApp:
 
         output_rows = []
         matched_keys = set()
+        def resolve_note(note_text: str) -> str:
+            if use_custom_note:
+                return note_or_placeholder(custom_note, use_placeholder=use_addnote)
+            return note_or_placeholder(note_text, use_placeholder=use_addnote)
+
         for link in links:
             location = link.get("location", "")
             matched_notes = notes_by_location.get(location, []) if location else []
@@ -163,7 +199,7 @@ class LinkCsvBuilderApp:
                     "Title": title,
                     "Author": author,
                     "Location": sanitize_csv_text(location),
-                    "Note": note_or_placeholder(combined_note),
+                    "Note": resolve_note(combined_note),
                 }
             )
 
@@ -177,7 +213,7 @@ class LinkCsvBuilderApp:
                     "Title": title,
                     "Author": author,
                     "Location": sanitize_csv_text(key),
-                    "Note": note_or_placeholder("\n\n".join([n for n in notes if n])),
+                    "Note": resolve_note("\n\n".join([n for n in notes if n])),
                 }
             )
 
@@ -189,7 +225,7 @@ class LinkCsvBuilderApp:
                     "Title": title,
                     "Author": author,
                     "Location": sanitize_csv_text(row.get("Location", "")),
-                    "Note": note_or_placeholder(row.get("Note", "")),
+                    "Note": resolve_note(row.get("Note", "")),
                 }
             )
 
@@ -211,7 +247,8 @@ class LinkCsvBuilderApp:
         if csv_paths:
             messagebox.showinfo("Done", f"Merged {len(csv_paths)} files into {len(output_rows)} rows:\n{output_path}")
         else:
-            messagebox.showinfo("Done", f"Exported {len(output_rows)} rows (links only, .addnote):\n{output_path}")
+            note_mode = "custom note" if use_custom_note else (".addnote enabled" if use_addnote else "blank notes")
+            messagebox.showinfo("Done", f"Exported {len(output_rows)} rows (links only, {note_mode}):\n{output_path}")
 
 
 def run():

@@ -16,6 +16,8 @@ def test_extract_page_number_from_various_inputs():
 def test_sanitize_and_note_helpers():
     assert sanitize_csv_text("  test  ") == "test"
     assert note_or_placeholder("") == ".addnote"
+    assert note_or_placeholder("", use_placeholder=False) == ""
+    assert note_or_placeholder("", use_placeholder=True, placeholder_text="custom") == "custom"
     assert "• item" in format_note_bullets("•item")
 
 

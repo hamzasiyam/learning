@@ -70,19 +70,23 @@ def format_note_bullets(note: str) -> str:
     return text.lstrip()
 
 
-def note_or_placeholder(note: str) -> str:
+def note_or_placeholder(note: str, use_placeholder: bool = True, placeholder_text: str = ".addnote") -> str:
     """Return a formatted note or default placeholder text.
 
     Args:
         note (str): Input note text.
+        use_placeholder (bool): If True, use placeholder when note is blank.
+        placeholder_text (str): Placeholder to use when enabled and blank.
 
     Returns:
-        str: Formatted note or `.addnote` when blank.
+        str: Formatted note, placeholder, or empty string when disabled.
     """
     # Apply canonical formatting first.
     formatted = format_note_bullets(note)
-    # If no content remains after formatting, use placeholder.
-    return formatted if formatted else ".addnote"
+    # If no content remains after formatting, use optional placeholder.
+    if formatted:
+        return formatted
+    return sanitize_csv_text(placeholder_text) if use_placeholder else ""
 
 
 def parse_link_line(line: str) -> str:
