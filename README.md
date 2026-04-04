@@ -44,6 +44,7 @@ The project is organized around a single root entry point (`main.py`) that opens
 - [Program Flow (Activity Diagram)](#program-flow-activity-diagram)
 - [Tests](#tests)
 - [Contributing](#contributing)
+- [Statement of AI Use](#statement-of-ai-use)
 - [License](#license)
 - [References](#references)
 
@@ -213,11 +214,23 @@ Contributions are welcome.
    - why it changed
    - how it was tested
 
+## Statement of AI Use
+
+**Statement of AI Use**
+
+I use generative AI to accelerate my coding, but strictly maintain a "human in the loop" to ensure accountability and accuracy. Because AI is not a substitute for foundational programming knowledge and can produce confident errors (hallucinations), I actively apply my expertise to debug and refine all automated suggestions.
+
+I am also highly vigilant against AI bias, recognizing that machine learning models can easily absorb and amplify historical inequalities. To build fair applications, I critically evaluate my algorithms and avoid flawed proxies—*using an easily measurable but misleading metric to represent a complex reality, much like using a person's zip code to judge their financial reliability*. By recognizing these limitations, I ensure incomplete data does not unfairly penalize vulnerable groups. Ultimately, the responsibility for the code rests entirely with me.
+
 ## License
 
 This project is licensed under the **MIT License**. See the `LICENSE` file for details.
 
 ## References
+
+- **Code comments and docstrings** — methodology aligned with Udacity’s guidance: [AI Programming with Python — Module: Commenting in Python](https://www.udacity.com/course/ai-programming-python-nanodegree--nd089)
+
+- **Statement of AI Use** — informed in part by the University of Maryland Smith School of Business resource: [Free Online Certificate: Artificial Intelligence and Career Empowerment](https://www.rhsmith.umd.edu/programs/executive-education/learning-opportunities-individuals/free-online-certificate-artificial-intelligence-and-career-empowerment)
 
 > "This README was structured based on the principles outlined in How to Write a Good README File for Your GitHub Project (https://www.freecodecamp.org/news/how-to-write-a-good-readme-file/
 ) by freeCodeCamp."

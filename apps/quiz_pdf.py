@@ -1,13 +1,19 @@
-"""
-Folder Watch -> Images to PDF (GUI) with size optimization + size estimate
+"""Folder watch GUI: detect new images in a directory and compile them into one PDF.
 
-Changes in this version
-- Much smaller PDFs without large quality loss (defaults: 200 DPI cap + JPEG quality 85 + 4:2:0 subsampling)
-- Shows an "Estimated PDF size" BEFORE compiling (preflights by processing images to temp and summing output bytes)
-- Estimate auto-updates when images/options change (runs in a background thread so UI stays responsive)
+This module implements a Tkinter application that (1) watches a user-chosen folder for
+image files that appear *after* the user clicks Start, (2) estimates output PDF size by
+preprocessing images like the final build, and (3) writes a letter-sized PDF via ReportLab.
 
-Dependencies:
-  pip install pillow reportlab
+Behavior notes for maintainers:
+    - Only images not present at Start time are queued (baseline snapshot).
+    - Files are polled periodically; incomplete writes are skipped until byte size stabilizes.
+    - Size estimate runs in a background thread so the UI stays responsive.
+
+Dependencies (install separately if needed):
+    pip install pillow reportlab
+
+When executed as ``python -m apps.quiz_pdf``, this file starts the Tkinter main loop;
+it is not intended as an importable library API.
 """
 
 import os
@@ -29,26 +35,65 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 
 
 def is_image_name(name: str) -> bool:
+    """Return True if ``name`` has a file extension treated as an image.
+
+    Args:
+        name (str): File name or path basename (e.g. ``"shot.png"``).
+
+    Returns:
+        bool: True when the suffix is in ``IMAGE_EXTS`` (case-insensitive).
+    """
+    # Compare lowercase extension against the allowed image set.
     return os.path.splitext(name)[1].lower() in IMAGE_EXTS
 
 
 def safe_abspath(p: str) -> str:
+    """Resolve ``p`` to an absolute path with user home expanded.
+
+    Args:
+        p (str): Path string that may contain ``~`` or relative segments.
+
+    Returns:
+        str: Normalized absolute path string.
+    """
+    # Expand ~ first, then resolve to absolute for consistent comparisons.
     return os.path.abspath(os.path.expanduser(p))
 
 
 def open_file_location_select(file_path: str) -> None:
+    """Open the OS file manager focused on the given file (best effort).
+
+    Args:
+        file_path (str): Path to a file; used to open its containing folder or select it.
+
+    Returns:
+        None: Launches a subprocess only; does not return a status code.
+    """
     file_path = safe_abspath(file_path)
 
+    # On Windows, Explorer can select a file in its folder.
     if sys.platform.startswith("win"):
         subprocess.run(["explorer", "/select,", file_path], check=False)
+    # On macOS, use ``open -R`` to reveal the file in Finder.
     elif sys.platform == "darwin":
         subprocess.run(["open", "-R", file_path], check=False)
+    # On Linux and similar, open the parent directory (no universal select API).
     else:
         folder = os.path.dirname(file_path)
         subprocess.run(["xdg-open", folder], check=False)
 
 
 def wait_until_stable(path: str, timeout_s: float = 10.0, poll_s: float = 0.25) -> bool:
+    """Wait until a file's byte size stops changing (e.g. copy still in progress).
+
+    Args:
+        path (str): Path to the file on disk.
+        timeout_s (float): Maximum seconds to keep polling before giving up.
+        poll_s (float): Seconds to sleep between size checks.
+
+    Returns:
+        bool: True if size was stable for several consecutive reads; False on timeout.
+    """
     end = time.time() + timeout_s
     last_size = -1
     stable_count = 0
@@ -57,13 +102,16 @@ def wait_until_stable(path: str, timeout_s: float = 10.0, poll_s: float = 0.25) 
         try:
             size = os.path.getsize(path)
         except OSError:
+            # If the file is missing or unreadable, treat size as invalid.
             size = -1
 
+        # If size matches last read and is positive, increment stability counter.
         if size == last_size and size > 0:
             stable_count += 1
             if stable_count >= 3:
                 return True
         else:
+            # Size changed or invalid; reset stability tracking.
             stable_count = 0
             last_size = size
 
@@ -73,6 +121,14 @@ def wait_until_stable(path: str, timeout_s: float = 10.0, poll_s: float = 0.25) 
 
 
 def human_size(num_bytes: int) -> str:
+    """Format a byte count as a short human-readable string.
+
+    Args:
+        num_bytes (int): Non-negative byte count (negative values behave like small positives).
+
+    Returns:
+        str: String such as ``"1.25 MB"``.
+    """
     if num_bytes < 1024:
         return f"{num_bytes} B"
     units = ["KB", "MB", "GB", "TB"]
@@ -85,12 +141,14 @@ def human_size(num_bytes: int) -> str:
 
 
 def preset_to_params(preset: str):
-    """
-    Returns (max_dpi_cap, jpeg_quality, subsampling)
-    subsampling: Pillow JPEG subsampling:
-      0 = 4:4:4 (best, biggest)
-      1 = 4:2:2
-      2 = 4:2:0 (smallest, typically fine for photos)
+    """Map UI preset label to Pillow/ReportLab preprocessing parameters.
+
+    Args:
+        preset (str): Combobox value such as ``"High Quality"`` or ``"Balanced"`` (case-insensitive).
+
+    Returns:
+        tuple[int, int, int]: ``(max_dpi_cap, jpeg_quality, subsampling)`` where
+        ``subsampling`` is Pillow JPEG subsampling: 0 = 4:4:4, 1 = 4:2:2, 2 = 4:2:0.
     """
     preset = (preset or "").lower()
     if preset == "high quality":
@@ -99,7 +157,7 @@ def preset_to_params(preset: str):
         return (200, 85, 2)
     if preset == "small":
         return (170, 82, 2)
-    # default
+    # If label is unknown, use balanced-like defaults.
     return (200, 85, 2)
 
 
@@ -110,29 +168,36 @@ def preprocess_image_for_pdf(
     jpeg_quality: int,
     subsampling: int,
 ) -> str:
+    """Prepare one image for PDF embedding: rotate, flatten alpha, resize, save JPEG.
+
+    Args:
+        src_path (str): Path to source image file.
+        temp_dir (str): Existing directory for temporary JPEG output.
+        max_dpi_cap (int): Max DPI when fitting to US Letter page (8.5x11 in).
+        jpeg_quality (int): JPEG quality 1–95 for Pillow save.
+        subsampling (int): Pillow chroma subsampling mode (0/1/2).
+
+    Returns:
+        str: Absolute path to the written ``.jpg`` file inside ``temp_dir``.
     """
-    Prepare image for embedding:
-    - EXIF rotate
-    - Flatten transparency onto white
-    - Convert to RGB
-    - Downscale to letter size at max_dpi_cap (e.g., 200 DPI => 1700x2200)
-    - Save optimized JPEG
-    """
-    # letter inches
+    # Letter size in inches; multiply by DPI to get max pixel dimensions.
     letter_w_in, letter_h_in = 8.5, 11.0
     max_w = int(round(letter_w_in * max_dpi_cap))
     max_h = int(round(letter_h_in * max_dpi_cap))
 
     with Image.open(src_path) as im:
+        # Apply EXIF orientation so thumbnails match how users see the image.
         im = ImageOps.exif_transpose(im)
 
         if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+            # If alpha or palette transparency exists, composite onto white background.
             bg = Image.new("RGB", im.size, (255, 255, 255))
             if im.mode != "RGBA":
                 im = im.convert("RGBA")
             bg.paste(im, mask=im.getchannel("A"))
             im = bg
         else:
+            # Otherwise ensure RGB for JPEG output.
             if im.mode != "RGB":
                 im = im.convert("RGB")
 
@@ -158,7 +223,19 @@ def preprocess_image_for_pdf(
 
 
 class DoneDialog(tk.Toplevel):
+    """Modal dialog shown after a PDF is written successfully."""
+
     def __init__(self, parent: tk.Tk, pdf_path: str, pdf_bytes: int):
+        """Build the success dialog with path, size, and action buttons.
+
+        Args:
+            parent (tk.Tk): Parent window (main app).
+            pdf_path (str): Full path to the created PDF.
+            pdf_bytes (int): File size in bytes for display.
+
+        Returns:
+            None: Initializes widgets; does not return a value.
+        """
         super().__init__(parent)
         self.title("PDF Created")
         self.pdf_path = pdf_path
@@ -167,6 +244,7 @@ class DoneDialog(tk.Toplevel):
         frm = ttk.Frame(self, padding=14)
         frm.grid(row=0, column=0, sticky="nsew")
 
+        # Show where the PDF was written and how large it is on disk.
         ttk.Label(frm, text="PDF successfully created:").grid(row=0, column=0, sticky="w")
         ttk.Label(frm, text=pdf_path, wraplength=560).grid(row=1, column=0, sticky="w", pady=(6, 2))
         ttk.Label(frm, text=f"Final size: {human_size(pdf_bytes)}").grid(row=2, column=0, sticky="w", pady=(0, 12))
@@ -181,7 +259,7 @@ class DoneDialog(tk.Toplevel):
         self.grab_set()
         self.update_idletasks()
 
-        # Center over parent
+        # Center this dialog over the main window for a predictable UX.
         px, py = parent.winfo_rootx(), parent.winfo_rooty()
         pw, ph = parent.winfo_width(), parent.winfo_height()
         w, h = self.winfo_width(), self.winfo_height()
@@ -190,11 +268,23 @@ class DoneDialog(tk.Toplevel):
         self.geometry(f"+{x}+{y}")
 
     def open_location(self):
+        """Open the file manager for ``self.pdf_path`` (see ``open_file_location_select``).
+
+        Returns:
+            None: Delegates to OS integration helper.
+        """
         open_file_location_select(self.pdf_path)
 
 
 class App(tk.Tk):
+    """Main application: watch folder, queue images, estimate size, compile PDF."""
+
     def __init__(self):
+        """Create window, initialize state variables, and build the UI.
+
+        Returns:
+            None: Sets up instance attributes and Tk widgets.
+        """
         super().__init__()
         self.title("Folder Watch → Images to PDF")
         self.minsize(900, 560)
@@ -228,18 +318,34 @@ class App(tk.Tk):
         self._bind_option_traces()
 
     def _style_defaults(self):
+        """Apply optional Tk scaling for readability on high-DPI displays.
+
+        Returns:
+            None: Best-effort UI tweak; failures are ignored.
+        """
         try:
             self.tk.call("tk", "scaling", 1.15)
         except Exception:
+            # If scaling is unsupported, keep platform defaults.
             pass
 
     def _bind_option_traces(self):
-        # Update estimate when options change
+        """Re-run size estimate when user changes compression or layout options.
+
+        Returns:
+            None: Registers trace callbacks on ``StringVar``/``BooleanVar`` instances.
+        """
+        # When preset or fit options change, debounce a new estimate run.
         self.preset_var.trace_add("write", lambda *_: self.schedule_estimate())
         self.fit_to_page_var.trace_add("write", lambda *_: self.schedule_estimate())
         self.avoid_upscale_var.trace_add("write", lambda *_: self.schedule_estimate())
 
     def _build_ui(self):
+        """Lay out all frames, listbox, options, and action buttons.
+
+        Returns:
+            None: Packs widgets into ``self``.
+        """
         outer = ttk.Frame(self, padding=12)
         outer.pack(fill="both", expand=True)
 
@@ -316,8 +422,14 @@ class App(tk.Tk):
         ttk.Label(compile_row, text="One image per page • Letter size").pack(side="left", padx=12)
 
     def choose_folder(self):
+        """Prompt user for watch directory and enable Start when valid.
+
+        Returns:
+            None: Updates ``watch_folder`` and button states, or returns early if cancelled.
+        """
         folder = filedialog.askdirectory(title="Select folder to watch")
         if not folder:
+            # User cancelled the directory picker; keep previous state.
             return
         self.watch_folder = safe_abspath(folder)
         self.folder_var.set(self.watch_folder)
@@ -325,6 +437,11 @@ class App(tk.Tk):
         self.start_btn.configure(state="normal")
 
     def start_watching(self):
+        """Snapshot existing images as baseline and begin periodic folder scans.
+
+        Returns:
+            None: Starts polling loop or shows error dialog.
+        """
         if not self.watch_folder or not os.path.isdir(self.watch_folder):
             messagebox.showerror("Folder not found", "Please choose a valid folder to watch.")
             return
@@ -348,6 +465,11 @@ class App(tk.Tk):
         self._schedule_scan()
 
     def stop_watching(self):
+        """Stop periodic scanning and reset button labels.
+
+        Returns:
+            None: Cancels scheduled ``after`` job if present.
+        """
         self.running = False
         if self.scan_job is not None:
             try:
@@ -361,12 +483,22 @@ class App(tk.Tk):
         self.status_var.set("Stopped. Click Start to watch again (baseline resets).")
 
     def _schedule_scan(self):
+        """Run one scan now and queue the next scan after a short delay.
+
+        Returns:
+            None: No-op when not ``running``.
+        """
         if not self.running:
             return
         self.scan_folder_once()
         self.scan_job = self.after(900, self._schedule_scan)
 
     def scan_folder_once(self):
+        """Detect new stable image files and append them to the queue listbox.
+
+        Returns:
+            None: Silently returns if folder missing or unreadable.
+        """
         if not self.watch_folder:
             return
 
@@ -378,13 +510,16 @@ class App(tk.Tk):
         added_any = False
 
         for name in names:
+            # Skip non-image files early to reduce filesystem work.
             if not is_image_name(name):
                 continue
             full = safe_abspath(os.path.join(self.watch_folder, name))
 
+            # Ignore files that existed at Start or are already queued.
             if full in self.baseline_files or full in self.known_new_set:
                 continue
 
+            # Wait until the file size stabilizes so we do not read partial downloads.
             if not wait_until_stable(full, timeout_s=6.0, poll_s=0.25):
                 continue
 
@@ -392,6 +527,7 @@ class App(tk.Tk):
                 with Image.open(full) as im:
                     im.verify()
             except Exception:
+                # Corrupt or incomplete image; skip until a later scan picks up a valid file.
                 continue
 
             self.known_new_files.append(full)
@@ -401,10 +537,16 @@ class App(tk.Tk):
 
         self.status_var.set(f"Watching… {len(self.known_new_files)} image(s) queued.")
 
+        # If we found new files, refresh the PDF size estimate for the updated queue.
         if added_any:
             self.schedule_estimate()
 
     def remove_selected(self):
+        """Remove highlighted rows from queue, listbox, and estimate inputs.
+
+        Returns:
+            None: No-op if nothing selected.
+        """
         sel = list(self.listbox.curselection())
         if not sel:
             return
@@ -420,6 +562,11 @@ class App(tk.Tk):
         self.schedule_estimate()
 
     def clear_list(self):
+        """Clear all queued images and reset estimate display.
+
+        Returns:
+            None: Mutates queue collections and UI.
+        """
         self.known_new_files.clear()
         self.known_new_set.clear()
         self.listbox.delete(0, "end")
@@ -429,7 +576,12 @@ class App(tk.Tk):
 
     # --------- Size estimate ---------
     def schedule_estimate(self):
-        # debounce
+        """Debounce rapid UI changes before running ``run_estimate_now``.
+
+        Returns:
+            None: Schedules a single delayed estimate via ``after``.
+        """
+        # Cancel any pending debounce timer so only the latest change wins.
         if self._estimate_job is not None:
             try:
                 self.after_cancel(self._estimate_job)
@@ -438,12 +590,16 @@ class App(tk.Tk):
         self._estimate_job = self.after(350, self.run_estimate_now)
 
     def run_estimate_now(self):
+        """Start background JPEG preflight to approximate final PDF size.
+
+        Returns:
+            None: Updates UI vars from worker thread via ``after(0, ...)``.
+        """
         if not self.known_new_files:
             self.estimate_var.set("Estimated PDF size: —")
             self._last_estimate_bytes = 0
             return
 
-        # cancel any previous estimate
         if self._estimate_thread and self._estimate_thread.is_alive():
             self._estimate_cancel.set()
 
@@ -455,6 +611,14 @@ class App(tk.Tk):
         t.start()
 
     def _estimate_worker(self, cancel_evt: threading.Event):
+        """Background worker: preprocess each queued image and sum JPEG sizes.
+
+        Args:
+            cancel_evt (threading.Event): Set when a new estimate supersedes this run.
+
+        Returns:
+            None: Communicates results by scheduling UI updates on the main thread.
+        """
         preset = self.preset_var.get()
         max_dpi_cap, jpeg_quality, subsampling = preset_to_params(preset)
 
@@ -498,7 +662,7 @@ class App(tk.Tk):
 
                     total += b
 
-                    # progressive UI update
+                    # Push partial totals to the UI so users see incremental progress.
                     est_now = total + overhead
                     self.after(0, lambda e=est_now, n=i: self.estimate_var.set(
                         f"Estimated PDF size: {human_size(int(e))}  (processed {n}/{len(self.known_new_files)})"
@@ -512,6 +676,11 @@ class App(tk.Tk):
 
     # --------- PDF compile ---------
     def compile_pdf(self):
+        """Build letter PDF from queued images using current preset and layout options.
+
+        Returns:
+            None: Writes file and opens ``DoneDialog``, or shows error dialog.
+        """
         if not self.known_new_files:
             messagebox.showwarning("No images", "No new images have been detected (after Start).")
             return
@@ -522,6 +691,7 @@ class App(tk.Tk):
             filetypes=[("PDF files", "*.pdf")],
         )
         if not save_path:
+            # User cancelled save dialog; do not write any file.
             return
         save_path = safe_abspath(save_path)
 
@@ -559,10 +729,12 @@ class App(tk.Tk):
                     if fit_within_margins:
                         scale_fit = min(avail_w / nat_w, avail_h / nat_h)
                         if avoid_upscale:
+                            # Cap scale at 1.0 so small images are not stretched (blur).
                             scale_fit = min(scale_fit, 1.0)
                         draw_w = nat_w * scale_fit
                         draw_h = nat_h * scale_fit
                     else:
+                        # Draw at native pixel size (may exceed page; user opted out of margin fit).
                         draw_w, draw_h = nat_w, nat_h
 
                     x = (page_w - draw_w) / 2
@@ -589,6 +761,11 @@ class App(tk.Tk):
             messagebox.showerror("Failed", f"Could not create PDF:\n{e}")
 
     def on_close(self):
+        """Handle window close: stop watching and cancel background estimate.
+
+        Returns:
+            None: Destroys main window after cleanup.
+        """
         self.stop_watching()
         try:
             if self._estimate_thread and self._estimate_thread.is_alive():
@@ -599,6 +776,7 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    # Entry point when launched as ``python -m apps.quiz_pdf``: create app and run Tk loop.
     app = App()
     app.protocol("WM_DELETE_WINDOW", app.on_close)
     app.mainloop()

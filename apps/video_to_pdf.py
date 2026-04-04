@@ -1,7 +1,19 @@
-"""Main desktop workflow for converting videos/images/PDFs into PDF outputs.
+"""Main desktop workflow for converting videos, images, and PDFs into study PDFs.
 
-This module contains the legacy all-in-one implementation used by the launcher.
-Core reusable logic is also available in `modules.core.*` for modular imports.
+This file is the **monolithic** implementation launched as ``apps.video_to_pdf``. It
+duplicates some helpers that also live under ``modules.core`` for historical reasons;
+when fixing bugs, check whether the same logic exists in ``modules.core`` and keep
+behavior aligned.
+
+Rough layout (read top-to-bottom):
+    1. Constants and perceptual-hash helpers for frame similarity UI.
+    2. Queue model + filename helpers shared by the main window.
+    3. PDF/image pipeline helpers (OpenCV + ReportLab + pypdf).
+    4. Tkinter UI glue: thread-safe callbacks, queue listbox, build actions.
+    5. ``FrameSelectionWindow`` and related interactive frame picking.
+
+The module expects to be run with the repository root on ``sys.path`` (e.g.
+``python -m apps.video_to_pdf`` from the project root).
 """
 
 import os
@@ -28,14 +40,23 @@ PdfWriter = pdfm.PdfWriter
 
 @contextmanager
 def suppress_ffmpeg_stderr():
-    """Redirect stderr to /dev/null to suppress FFmpeg H.264 warnings."""
+    """Temporarily silence stderr while OpenCV/FFmpeg logs noisy codec messages.
+
+    Yields:
+        None: Control returns to the ``with`` block body.
+
+    Returns:
+        None: Context manager protocol; no meaningful return on exit.
+    """
     stderr_fd = sys.stderr.fileno()
     with open(os.devnull, "w") as devnull:
         backup_fd = os.dup(stderr_fd)
         try:
+            # Point stderr at the null device for the duration of the block.
             os.dup2(devnull.fileno(), stderr_fd)
             yield
         finally:
+            # Always restore the original stderr file descriptor.
             os.dup2(backup_fd, stderr_fd)
             os.close(backup_fd)
 
@@ -89,6 +110,14 @@ SIM_COLOR_UNIQUE         = "#f0f0f0"   # Light grey  — unique, no similar fram
 
 
 def similarity_badge_color(similarity_percent: float) -> str:
+    """Pick a Tkinter-friendly hex color for a similarity score badge.
+
+    Args:
+        similarity_percent (float): Percent similarity in ``[0, 100]``.
+
+    Returns:
+        str: Hex color constant from the ``SIM_COLOR_*`` palette.
+    """
     if similarity_percent >= 90: return SIM_COLOR_VERY_SIMILAR
     if similarity_percent >= 75: return SIM_COLOR_SIMILAR
     if similarity_percent >= 50: return SIM_COLOR_SOMEWHAT_SIMILAR
@@ -96,7 +125,14 @@ def similarity_badge_color(similarity_percent: float) -> str:
 
 
 def compute_phash(img_path: str) -> Optional[np.ndarray]:
-    """Compute a perceptual hash (fingerprint) for an image."""
+    """Compute a perceptual hash (binary fingerprint vector) for one image file.
+
+    Args:
+        img_path (str): Path to an image readable by OpenCV.
+
+    Returns:
+        Optional[np.ndarray]: Flattened boolean hash, or None if load/hash fails.
+    """
     try:
         img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         if img is None:
@@ -111,15 +147,34 @@ def compute_phash(img_path: str) -> Optional[np.ndarray]:
 
 
 def hamming_distance(h1: np.ndarray, h2: np.ndarray) -> int:
+    """Count differing bits between two equal-length hash vectors.
+
+    Args:
+        h1 (np.ndarray): First hash (boolean or 0/1).
+        h2 (np.ndarray): Second hash.
+
+    Returns:
+        int: Hamming distance (number of mismatched positions).
+    """
     return int(np.count_nonzero(h1 != h2))
 
 
 def similarity_percent(hamming: int, bits: int = PHASH_SIZE * PHASH_SIZE) -> float:
+    """Convert Hamming distance to a percentage similarity score.
+
+    Args:
+        hamming (int): Number of differing bits.
+        bits (int): Total bits in the hash (defaults to ``PHASH_SIZE ** 2``).
+
+    Returns:
+        float: Similarity percentage rounded to one decimal place.
+    """
     return round(100.0 * (1.0 - hamming / bits), 1)
 
 
 @dataclass
 class SimilarityGroup:
+    """One cluster of visually similar frames sharing a representative hash."""
     group_id: int
     frame_paths: List[str]    = field(default_factory=list)
     similarities: List[float] = field(default_factory=list)
@@ -145,10 +200,15 @@ def cluster_frames_by_similarity(
     threshold: int = DEFAULT_THRESHOLD,
     progress_callback=None
 ) -> List[SimilarityGroup]:
-    """
-    Group frames that look visually similar using perceptual hashing.
-    threshold: maximum Hamming distance to consider two frames 'the same scene'.
-    Lower threshold = stricter grouping (more groups, fewer duplicates skipped).
+    """Cluster frame image paths by perceptual-hash similarity for the selection UI.
+
+    Args:
+        frame_paths (List[str]): Ordered list of extracted frame image paths.
+        threshold (int): Maximum Hamming distance to treat a frame as belonging to a group.
+        progress_callback: Optional ``(done, total, message)`` reporter during hashing.
+
+    Returns:
+        List[SimilarityGroup]: Groups in discovery order; each holds paths + similarity list.
     """
     if not frame_paths:
         return []
@@ -181,14 +241,17 @@ def cluster_frames_by_similarity(
             if rep_hash is None:
                 continue
             distance = hamming_distance(h, rep_hash)
+            # Keep the closest representative that still satisfies the threshold.
             if distance <= threshold and distance < best_distance:
                 best_distance = distance
                 best_group_index = gi
 
         if best_group_index is not None:
+            # Attach this frame to the winning group and record similarity to rep.
             groups[best_group_index].frame_paths.append(path)
             groups[best_group_index].similarities.append(similarity_percent(best_distance))
         else:
+            # No representative matched; start a new cluster with this hash.
             g = SimilarityGroup(group_id=len(groups), frame_paths=[path],
                                 similarities=[100.0], representative_path=path)
             groups.append(g)
@@ -205,6 +268,8 @@ def cluster_frames_by_similarity(
 # =========================
 @dataclass
 class QueueItem:
+    """One entry in the main-window processing queue (video file or existing PDF)."""
+
     kind: str   # "video" | "pdf"
     path: str
 
@@ -231,10 +296,27 @@ _WIN_RESERVED = frozenset({
 
 
 def sanitize_filename(text: str) -> str:
+    """Strip characters illegal in Windows/macOS/Linux file names.
+
+    Args:
+        text (str): Raw title or filename fragment.
+
+    Returns:
+        str: Sanitized string with surrounding whitespace removed.
+    """
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", text).strip()
 
 
 def safe_filename(title: str, max_length: int = 200) -> str:
+    """Turn user title text into a single-segment safe filename stem.
+
+    Args:
+        title (str): User-provided document title.
+        max_length (int): Maximum output length after cleanup.
+
+    Returns:
+        str: Safe filename stem (no extension), never empty.
+    """
     if not title or not title.strip():
         return "Combined"
     s = sanitize_filename(title)
@@ -251,6 +333,14 @@ def safe_filename(title: str, max_length: int = 200) -> str:
 
 
 def format_seconds(s: float) -> str:
+    """Format a non-negative duration in seconds as ``H:MM:SS`` or ``M:SS``.
+
+    Args:
+        s (float): Duration; negative values are clamped to zero.
+
+    Returns:
+        str: Human-readable clock string for ETA labels.
+    """
     s = max(0, int(s))
     hours, remainder = divmod(s, 3600)
     minutes, seconds = divmod(remainder, 60)
@@ -260,6 +350,14 @@ def format_seconds(s: float) -> str:
 
 
 def format_bytes(num_bytes: float) -> str:
+    """Pretty-print a byte size using SI-style steps (B, KB, MB, GB).
+
+    Args:
+        num_bytes (float): Size in bytes.
+
+    Returns:
+        str: Rounded size with unit suffix.
+    """
     if num_bytes <= 0:
         return "0 B"
     for unit in ["B", "KB", "MB", "GB"]:
@@ -270,7 +368,14 @@ def format_bytes(num_bytes: float) -> str:
 
 
 def make_unique_output_dir(base_dir: str) -> str:
-    """Return a directory path that does not currently exist."""
+    """Return ``base_dir`` if unused, else ``base_dir_2``, ``base_dir_3``, …
+
+    Args:
+        base_dir (str): Desired directory path.
+
+    Returns:
+        str: First variant path that does not exist yet.
+    """
     if not os.path.exists(base_dir):
         return base_dir
     n = 2
@@ -282,7 +387,16 @@ def make_unique_output_dir(base_dir: str) -> str:
 
 
 def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int) -> np.ndarray:
-    """Add a black bottom bar with white page number text to match PDF pages."""
+    """Draw a footer bar under the frame image with a ``Page N`` label.
+
+    Args:
+        image (np.ndarray): BGR/BGRA/gray OpenCV image.
+        page_num (int): 1-based page index to display.
+        bar_height (int): Footer height in pixels; if zero, returns ``image`` unchanged.
+
+    Returns:
+        np.ndarray: BGR image including footer bar.
+    """
     if bar_height <= 0:
         return image
 
@@ -305,7 +419,18 @@ def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int) -> np
 
 def export_images_as_png(image_paths: List[str], output_dir: str, progress_callback=None,
                          bar_height: int = 36, start_page_number: int = 1) -> str:
-    """Export image paths to PNG files with page bars, named by page number."""
+    """Write each selected frame to ``Page N.png`` under ``output_dir``.
+
+    Args:
+        image_paths (List[str]): Source images in page order.
+        output_dir (str): Destination folder (created if missing).
+        progress_callback: Optional ``(i, total, msg)`` hook.
+        bar_height (int): Footer bar height in pixels.
+        start_page_number (int): First page index for naming.
+
+    Returns:
+        str: The ``output_dir`` path for convenience.
+    """
     os.makedirs(output_dir, exist_ok=True)
     total = len(image_paths)
     for i, img_path in enumerate(image_paths):
@@ -325,6 +450,17 @@ def export_images_as_png(image_paths: List[str], output_dir: str, progress_callb
 
 
 def estimate_video_pdf_size(video_path, seconds_step, max_width, quality):
+    """Heuristic PDF byte estimate for one video given sampling parameters.
+
+    Args:
+        video_path (str): Path to video file.
+        seconds_step (int): Seconds between extracted frames in the active preset.
+        max_width (int): Maximum frame width after resize.
+        quality (int): JPEG quality used in extraction heuristics.
+
+    Returns:
+        float | None: Estimated bytes, or None if metadata cannot be read.
+    """
     with suppress_ffmpeg_stderr():
         cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -348,6 +484,12 @@ def estimate_video_pdf_size(video_path, seconds_step, max_width, quality):
 
 
 def estimate_queue_output_size():
+    """Sum rough output sizes for everything currently in the global ``queue_items``.
+
+    Returns:
+        tuple[float, int]: ``(estimated_bytes, unknown_video_count)`` where unknowns
+        could not be sized from container metadata.
+    """
     settings = PRESETS[preset_var.get()]
     step      = int(settings["seconds"])
     max_width = int(settings["width"])
@@ -374,22 +516,86 @@ def estimate_queue_output_size():
 # UI thread-safe helpers
 # =========================
 def ui_call(fn, *args, **kwargs):
+    """Schedule ``fn`` on the Tk main thread (safe from worker threads).
+
+    Args:
+        fn (Callable): Tk or Python callable to invoke.
+        *args: Positional args forwarded to ``fn``.
+        **kwargs: Keyword args forwarded to ``fn``.
+
+    Returns:
+        None: Always schedules via ``root.after``; does not wait for completion.
+    """
     root.after(0, lambda: fn(*args, **kwargs))
 
-def ui_set_status(text):  ui_call(status_label.config, text=text)
-def ui_set_eta(text):     ui_call(eta_label.config, text=text)
-def ui_set_estimated_size(text): ui_call(size_label.config, text=text)
+def ui_set_status(text):
+    """Update the main status label on the UI thread.
+
+    Args:
+        text (str): Short human-readable status string.
+
+    Returns:
+        None: Forwards to ``status_label.config`` via ``ui_call``.
+    """
+    ui_call(status_label.config, text=text)
+
+def ui_set_eta(text):
+    """Update the ETA label on the UI thread.
+
+    Args:
+        text (str): ETA string such as ``Time remaining: 0:42``.
+
+    Returns:
+        None: Forwards to ``eta_label.config`` via ``ui_call``.
+    """
+    ui_call(eta_label.config, text=text)
+
+def ui_set_estimated_size(text):
+    """Update the estimated output size label on the UI thread.
+
+    Args:
+        text (str): Size estimate text for the label.
+
+    Returns:
+        None: Forwards to ``size_label.config`` via ``ui_call``.
+    """
+    ui_call(size_label.config, text=text)
 
 def ui_set_progress(value, maximum):
+    """Set determinate progress bar value and maximum on the UI thread.
+
+    Args:
+        value (int | float): Current progress value.
+        maximum (int | float): Progress bar maximum.
+
+    Returns:
+        None: Mutates ``progress_bar`` via ``ui_call``.
+    """
     def _set():
         progress_bar["maximum"] = max(1, int(maximum))
         progress_bar["value"]   = max(0, int(value))
     ui_call(_set)
 
 def ui_enable_open_location(enabled):
+    """Enable or disable the Open Location button after a successful build.
+
+    Args:
+        enabled (bool): True to allow opening Explorer/Finder to output.
+
+    Returns:
+        None: Updates widget state through Tk queue.
+    """
     ui_call(open_location_btn.config, state=("normal" if enabled else "disabled"))
 
 def ui_set_buttons_running(running):
+    """Disable most controls while a long conversion runs (or re-enable after).
+
+    Args:
+        running (bool): True when background work is active.
+
+    Returns:
+        None: Updates multiple widgets; ignores missing optional buttons.
+    """
     state = "disabled" if running else "normal"
     for btn in [add_videos_btn, add_pdfs_btn, add_images_btn,
                 move_up_btn, move_down_btn, remove_btn, clear_list_btn,
@@ -403,6 +609,14 @@ def ui_set_buttons_running(running):
     ui_call(queue_lb.config, state=state)
 
 def ui_popup_done(output_pdf):
+    """Show a non-blocking info dialog naming the finished PDF.
+
+    Args:
+        output_pdf (str): Path written by the conversion pipeline.
+
+    Returns:
+        None: Schedules ``messagebox.showinfo`` on the Tk thread.
+    """
     ui_call(lambda: messagebox.showinfo(
         "PDF Created",
         f"Your PDF has been created:\n\n{os.path.basename(output_pdf)}"
@@ -413,6 +627,14 @@ def ui_popup_done(output_pdf):
 # Temp directory helpers
 # =========================
 def make_temp_dir_near_output(output_pdf):
+    """Create a temp directory next to the target PDF for frame extraction scratch.
+
+    Args:
+        output_pdf (str): Intended output PDF path (may not exist yet).
+
+    Returns:
+        str: Path to a newly created temporary directory.
+    """
     base_dir = os.path.dirname(os.path.abspath(output_pdf))
     safe_tmp = os.path.join(base_dir, "_video_to_pdf_frames_tmp")
     os.makedirs(safe_tmp, exist_ok=True)
@@ -420,6 +642,14 @@ def make_temp_dir_near_output(output_pdf):
 
 
 def cleanup_dir(path):
+    """Recursively delete a directory tree; swallow errors (best-effort cleanup).
+
+    Args:
+        path (str): Root directory to remove.
+
+    Returns:
+        None: Side-effect only; failures are ignored intentionally.
+    """
     try:
         for root_dir, dirs, files in os.walk(path, topdown=False):
             for f in files:
@@ -438,6 +668,15 @@ def cleanup_dir(path):
 
 
 def resize_frame(frame, max_width):
+    """Downscale ``frame`` so width does not exceed ``max_width`` (keep aspect).
+
+    Args:
+        frame (np.ndarray): BGR image from ``cv2.VideoCapture.read``.
+        max_width (int): Maximum allowed width in pixels.
+
+    Returns:
+        np.ndarray: Original frame if already narrow enough; otherwise resized.
+    """
     h, w = frame.shape[:2]
     if w <= max_width:
         return frame
