@@ -228,6 +228,8 @@ This project is licensed under the **MIT License**. See the `LICENSE` file for d
 
 ## References
 
+> **Best Practices Citation:** [Indentations with Python](https://learn.udacity.com/nd089?version=13.0.8&partKey=cd13568&lessonKey=58044931-0630-4b80-9feb-3586c32e53d7&conceptKey=5386d06d-51e7-4dfa-a407-bbdb7bb42a45)
+
 - **Code comments and docstrings** — methodology aligned with Udacity’s guidance: [AI Programming with Python — Module: Commenting in Python](https://www.udacity.com/course/ai-programming-python-nanodegree--nd089)
 
 - **Statement of AI Use** — informed in part by the University of Maryland Smith School of Business resource: [Free Online Certificate: Artificial Intelligence and Career Empowerment](https://www.rhsmith.umd.edu/programs/executive-education/learning-opportunities-individuals/free-online-certificate-artificial-intelligence-and-career-empowerment)
