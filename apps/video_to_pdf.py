@@ -2773,17 +2773,23 @@ class FrameSelectionWindow:
             global last_output_pdf
             try:
                 if split_enabled:
+                    output_dir = os.path.dirname(output_path)
+                    output_name = os.path.splitext(os.path.basename(output_path))[0]
+                    split_dir_base = os.path.join(output_dir, f"{output_name}_split")
+                    split_dir = make_unique_output_dir(split_dir_base)
+                    os.makedirs(split_dir, exist_ok=True)
+                    split_output_path = os.path.join(split_dir, os.path.basename(output_path))
                     outputs = build_split_pdfs(
-                        all_images, output_path, self.meta,
+                        all_images, split_output_path, self.meta,
                         target_size_mb=target_size_mb,
                         bar_height=PAGE_NUMBER_BAR_PTS,
                         optimize=self.optimize_var.get(),
                         progress_callback=on_progress,
                     )
-                    last_output_pdf = outputs[0] if outputs else output_path
+                    last_output_pdf = outputs[0] if outputs else split_output_path
                     done_msg = (
-                        f"Created {len(outputs)} PDF file(s) in the same folder as:\n"
-                        f"{os.path.basename(output_path)}\n\n"
+                        f"Created {len(outputs)} split PDF file(s) in:\n"
+                        f"{os.path.basename(split_dir)}\n\n"
                         f"Total: {len(selected)} frames + {len(self.extra_image_paths)} extra images"
                     )
                 else:
