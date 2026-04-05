@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Google Drive Link Converter</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff;
+    --bg-secondary: #f5f5f3;
+    --bg-tertiary: #eeede9;
+    --bg-success: #eaf3de;
+    --bg-danger: #fcebeb;
+    --text: #1a1a18;
+    --text-secondary: #5f5e5a;
+    --text-tertiary: #888780;
+    --text-success: #27500a;
+    --text-danger: #791f1f;
+    --border: rgba(0,0,0,0.12);
+    --border-secondary: rgba(0,0,0,0.2);
+    --border-success: rgba(55,110,17,0.3);
+    --border-danger: rgba(163,45,45,0.3);
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --font-mono: 'Courier New', monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1c;
+      --bg-secondary: #2a2a28;
+      --bg-tertiary: #333331;
+      --bg-success: #173404;
+      --bg-danger: #501313;
+      --text: #e8e7e3;
+      --text-secondary: #9a9993;
+      --text-tertiary: #666560;
+      --text-success: #c0dd97;
+      --text-danger: #f09595;
+      --border: rgba(255,255,255,0.1);
+      --border-secondary: rgba(255,255,255,0.18);
+      --border-success: rgba(192,221,151,0.3);
+      --border-danger: rgba(240,149,149,0.3);
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-tertiary);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1rem;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .container {
+    max-width: 680px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 20px;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+  }
+
+  .card {
+    background: var(--bg);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .drop-zone {
+    border: 1.5px dashed var(--border-secondary);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    cursor: text;
+    transition: background .15s;
+  }
+
+  .drop-zone.hover {
+    background: var(--bg-secondary);
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 100px;
+    resize: vertical;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    outline: none;
+    display: block;
+    line-height: 1.7;
+  }
+
+  textarea::placeholder { color: var(--text-tertiary); }
+
+  .drop-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 6px;
+    pointer-events: none;
+  }
+
+  .seg-wrap {
+    display: flex;
+    gap: 3px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    padding: 3px;
+  }
+
+  .seg-btn {
+    flex: 1;
+    padding: 7px 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: var(--radius-md);
+    transition: background .1s, color .1s;
+  }
+
+  .seg-btn.active {
+    background: var(--bg);
+    color: var(--text);
+    border: 0.5px solid var(--border-secondary);
+  }
+
+  .fmt-preview {
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    background: var(--bg-secondary);
+    padding: 6px 10px;
+    border-radius: var(--radius-md);
+    word-break: break-all;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1.25rem;
+  }
+
+  button.primary {
+    flex: 1;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--border-secondary);
+    background: var(--bg-secondary);
+    color: var(--text);
+    transition: background .1s;
+  }
+
+  button.primary:hover { background: var(--bg-tertiary); }
+  button.primary:active { transform: scale(0.98); }
+
+  button.secondary {
+    padding: 10px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+  }
+
+  button.secondary:hover { background: var(--bg-secondary); }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 1rem;
+  }
+
+  .stat {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    padding: .75rem 1rem;
+    text-align: center;
+  }
+
+  .stat-n { font-size: 22px; font-weight: 500; }
+  .stat-l { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .results-title { font-size: 13px; font-weight: 500; }
+
+  .copy-row { display: flex; gap: 6px; }
+
+  .copy-btn {
+    font-size: 11px;
+    padding: 4px 10px;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--border-secondary);
+    background: transparent;
+    color: var(--text-secondary);
+    transition: background .1s;
+  }
+
+  .copy-btn:hover { background: var(--bg-secondary); }
+  .copy-btn.done { color: var(--text-success); border-color: var(--border-success); }
+
+  .result-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    margin-bottom: 6px;
+    transition: background .1s;
+  }
+
+  .result-row:hover { background: var(--bg-secondary); }
+  .result-num { font-size: 12px; font-weight: 500; color: var(--text-tertiary); min-width: 18px; text-align: right; }
+  .result-link { flex: 1; font-family: var(--font-mono); font-size: 12px; word-break: break-all; line-height: 1.5; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 9px;
+    border-radius: 20px;
+    margin-bottom: 6px;
+  }
+
+  .pill-err { background: var(--bg-danger); color: var(--text-danger); }
+
+  .err-box {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-danger);
+    background: var(--bg-danger);
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    white-space: pre-wrap;
+    word-break: break-all;
+    border: 0.5px solid var(--border-danger);
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: var(--text);
+    color: var(--bg);
+    font-size: 13px;
+    padding: 8px 18px;
+    border-radius: 20px;
+    transition: transform .2s ease, opacity .2s ease;
+    opacity: 0;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>Google Drive link converter</h1>
+  <p class="subtitle">Paste sharing links and get direct image URLs instantly.</p>
+
+  <div class="card">
+    <span class="label">input links</span>
+    <div class="drop-zone" id="dropZone">
+      <textarea id="ta" placeholder="paste google drive links here — comma or line separated&#10;&#10;e.g. https://drive.google.com/file/d/ABC123/view?usp=drive_link"></textarea>
+      <div class="drop-hint">or drag &amp; drop a .txt file — Ctrl+Enter to convert</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="label">output format</span>
+    <div class="seg-wrap">
+      <button class="seg-btn active" onclick="setFmt(this,'uc')">standard</button>
+      <button class="seg-btn" onclick="setFmt(this,'lh3')">embed-friendly</button>
+      <button class="seg-btn" onclick="setFmt(this,'thumb')">thumbnail</button>
+    </div>
+    <div class="fmt-preview" id="fmtPreview">https://drive.google.com/uc?export=view&amp;id={ID}</div>
+  </div>
+
+  <div class="btn-row">
+    <button class="primary" onclick="convert()">Convert links</button>
+    <button class="secondary" onclick="clearAll()">Clear</button>
+  </div>
+
+  <div class="stats-grid hidden" id="stats">
+    <div class="stat"><div class="stat-n" id="stTotal">0</div><div class="stat-l">total</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--text-success)" id="stOk">0</div><div class="stat-l">converted</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--text-danger)" id="stErr">0</div><div class="stat-l">failed</div></div>
+  </div>
+
+  <div id="results" class="hidden">
+    <div class="results-header">
+      <span class="results-title">converted links</span>
+      <div class="copy-row">
+        <button class="copy-btn" id="btnCopyAll" onclick="copyAll()">copy all</button>
+        <button class="copy-btn" id="btnCopyList" onclick="copyList()">copy as list</button>
+      </div>
+    </div>
+    <div id="linkList"></div>
+
+    <div id="errWrap" class="hidden" style="margin-top:1rem">
+      <span class="pill pill-err">failed to parse</span>
+      <div class="err-box" id="errList"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let fmt = 'uc';
+  let converted = [];
+
+  const previews = {
+    uc:    'https://drive.google.com/uc?export=view&id={ID}',
+    lh3:   'https://lh3.googleusercontent.com/d/{ID}',
+    thumb: 'https://drive.google.com/thumbnail?id={ID}&sz=w1000'
+  };
+
+  function setFmt(btn, f) {
+    document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    fmt = f;
+    document.getElementById('fmtPreview').textContent = previews[f];
+  }
+
+  function extractId(url) {
+    url = url.trim();
+    const patterns = [
+      /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/,
+      /drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/,
+      /drive\.google\.com\/uc\?.*id=([a-zA-Z0-9_-]+)/,
+      /[?&]id=([a-zA-Z0-9_-]{10,})/
+    ];
+    for (const p of patterns) {
+      const m = url.match(p);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  function toLink(id) {
+    if (fmt === 'uc')    return `https://drive.google.com/uc?export=view&id=${id}`;
+    if (fmt === 'lh3')   return `https://lh3.googleusercontent.com/d/${id}`;
+    return `https://drive.google.com/thumbnail?id=${id}&sz=w1000`;
+  }
+
+  function convert() {
+    const raw = document.getElementById('ta').value;
+    const parts = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    if (!parts.length) return;
+
+    const good = [], bad = [];
+    parts.forEach(url => {
+      const id = extractId(url);
+      id ? good.push({ url, link: toLink(id) }) : bad.push(url);
+    });
+
+    converted = good;
+
+    document.getElementById('stTotal').textContent = parts.length;
+    document.getElementById('stOk').textContent = good.length;
+    document.getElementById('stErr').textContent = bad.length;
+    document.getElementById('stats').classList.remove('hidden');
+
+    const ll = document.getElementById('linkList');
+    ll.innerHTML = '';
+    good.forEach(({ link }, i) => {
+      const row = document.createElement('div');
+      row.className = 'result-row';
+      row.innerHTML = `
+        <span class="result-num">${i + 1}</span>
+        <span class="result-link">${link}</span>
+        <button class="copy-btn" onclick="copyOne(this, '${link}')">copy</button>
+      `;
+      ll.appendChild(row);
+    });
+
+    document.getElementById('results').classList.remove('hidden');
+
+    const ew = document.getElementById('errWrap');
+    if (bad.length) {
+      ew.classList.remove('hidden');
+      document.getElementById('errList').textContent = bad.join('\n');
+    } else {
+      ew.classList.add('hidden');
+    }
+  }
+
+  function copyText(text, btn, label) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => feedback(btn, label));
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      feedback(btn, label);
+    }
+  }
+
+  function feedback(btn, originalLabel) {
+    if (btn) {
+      btn.textContent = 'copied!';
+      btn.classList.add('done');
+      setTimeout(() => { btn.textContent = originalLabel; btn.classList.remove('done'); }, 1500);
+    } else {
+      showToast('copied!');
+    }
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+  }
+
+  function copyOne(btn, link) { copyText(link, btn, 'copy'); }
+  function copyAll() { copyText(converted.map(g => g.link).join('\n'), document.getElementById('btnCopyAll'), 'copy all'); }
+  function copyList() { copyText(converted.map((g, i) => `${i+1}. ${g.link}`).join('\n'), document.getElementById('btnCopyList'), 'copy as list'); }
+
+  function clearAll() {
+    document.getElementById('ta').value = '';
+    document.getElementById('results').classList.add('hidden');
+    document.getElementById('stats').classList.add('hidden');
+    converted = [];
+  }
+
+  const dz = document.getElementById('dropZone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('hover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('hover'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('hover');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const r = new FileReader();
+      r.onload = ev => { document.getElementById('ta').value = ev.target.result; };
+      r.readAsText(file);
+    }
+  });
+
+  document.getElementById('ta').addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') convert();
+  });
+</script>
+</body>
+</html>
