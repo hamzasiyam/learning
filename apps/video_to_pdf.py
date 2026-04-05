@@ -386,13 +386,15 @@ def make_unique_output_dir(base_dir: str) -> str:
         n += 1
 
 
-def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int) -> np.ndarray:
-    """Draw a footer bar under the frame image with a ``Page N`` label.
+def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int, total_pages: Optional[int] = None) -> np.ndarray:
+    """Draw a footer bar under the frame image with a ``Page X/Y`` label.
 
     Args:
         image (np.ndarray): BGR/BGRA/gray OpenCV image.
         page_num (int): 1-based page index to display.
         bar_height (int): Footer height in pixels; if zero, returns ``image`` unchanged.
+        total_pages (Optional[int]): Total pages in this export batch. If provided and
+            positive, footer uses ``Page X/Y``; otherwise falls back to ``Page X``.
 
     Returns:
         np.ndarray: BGR image including footer bar.
@@ -409,7 +411,10 @@ def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int) -> np
     canvas = np.zeros((h + bar_height, w, 3), dtype=np.uint8)
     canvas[:h, :] = image
 
-    text = f"Page {page_num}"
+    if total_pages and total_pages > 0:
+        text = f"Page {page_num}/{total_pages}"
+    else:
+        text = f"Page {page_num}"
     text_x = 12
     text_y = h + int(bar_height * 0.75)
     cv2.putText(canvas, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX,
@@ -418,7 +423,8 @@ def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int) -> np
 
 
 def export_images_as_png(image_paths: List[str], output_dir: str, progress_callback=None,
-                         bar_height: int = 36, start_page_number: int = 1) -> str:
+                         bar_height: int = 36, start_page_number: int = 1,
+                         total_pages: Optional[int] = None) -> str:
     """Write each selected frame to ``Page N.png`` under ``output_dir``.
 
     Args:
@@ -427,12 +433,15 @@ def export_images_as_png(image_paths: List[str], output_dir: str, progress_callb
         progress_callback: Optional ``(i, total, msg)`` hook.
         bar_height (int): Footer bar height in pixels.
         start_page_number (int): First page index for naming.
+        total_pages (Optional[int]): Total pages in the batch for footer format ``X/Y``.
 
     Returns:
         str: The ``output_dir`` path for convenience.
     """
     os.makedirs(output_dir, exist_ok=True)
     total = len(image_paths)
+    if total_pages is None:
+        total_pages = max(0, start_page_number - 1) + total
     for i, img_path in enumerate(image_paths):
         page_num = start_page_number + i
         if progress_callback:
@@ -440,7 +449,12 @@ def export_images_as_png(image_paths: List[str], output_dir: str, progress_callb
         frame = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
         if frame is None:
             raise RuntimeError(f"Could not read image for PNG export: {os.path.basename(img_path)}")
-        frame = add_page_number_bar(frame, page_num=page_num, bar_height=bar_height)
+        frame = add_page_number_bar(
+            frame,
+            page_num=page_num,
+            bar_height=bar_height,
+            total_pages=total_pages,
+        )
         out_path = os.path.join(output_dir, f"Page {page_num}.png")
         if not cv2.imwrite(out_path, frame):
             raise RuntimeError(f"Could not write PNG file: {os.path.basename(out_path)}")
@@ -904,7 +918,8 @@ def estimate_pdf_size_bytes(image_paths, optimize=False):
 
 def build_pdf_from_images(image_paths, output_pdf, meta, bar_height=36,
                           progress_callback=None, optimize=False,
-                          start_page_number=1, progress_offset=0, progress_total=None):
+                          start_page_number=1, progress_offset=0, progress_total=None,
+                          total_pages: Optional[int] = None):
     from reportlab.lib.colors import black
     c = canvas.Canvas(output_pdf)
     c.setTitle(meta.get("title", ""))
@@ -945,7 +960,11 @@ def build_pdf_from_images(image_paths, output_pdf, meta, bar_height=36,
             c.rect(0, 0, w, bar_height, fill=1, stroke=0)
             c.setFillColorRGB(1, 1, 1)
             c.setFont("Helvetica", 14)
-            c.drawString(12, bar_height * 0.25, f"Page {page_num}")
+            if total_pages and total_pages > 0:
+                page_label = f"Page {page_num}/{total_pages}"
+            else:
+                page_label = f"Page {page_num}"
+            c.drawString(12, bar_height * 0.25, page_label)
             c.showPage()
     finally:
         if tmp_opt:
@@ -986,14 +1005,15 @@ def split_images_by_size(image_paths, target_size_mb, optimize=False):
 
 def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=36,
                      optimize=False, progress_callback=None):
+    total_pages = len(image_paths)
     batches = split_images_by_size(image_paths, target_size_mb, optimize=optimize)
     if len(batches) <= 1:
         build_pdf_from_images(image_paths, output_pdf, meta, bar_height=bar_height,
-                              optimize=optimize, progress_callback=progress_callback)
+                              optimize=optimize, progress_callback=progress_callback,
+                              total_pages=total_pages)
         return [output_pdf]
 
     base, ext = os.path.splitext(output_pdf)
-    total_pages = len(image_paths)
     outputs: List[str] = []
     offset = 0
     for idx, batch in enumerate(batches, 1):
@@ -1007,6 +1027,7 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
             start_page_number=offset + 1,
             progress_offset=offset,
             progress_total=total_pages,
+            total_pages=total_pages,
             progress_callback=progress_callback,
         )
         offset += len(batch)
@@ -1457,6 +1478,12 @@ class FrameSelectionWindow:
 
         self.similarity_groups: Dict[int, List[SimilarityGroup]] = {}
         self.frame_to_group:    Dict[int, Tuple[int, float]]     = {}
+        # Track which strictness value produced cached groups per video index.
+        self._cluster_threshold_by_ci: Dict[int, int] = {}
+        # Monotonic token per video to ignore stale background clustering results.
+        self._cluster_token_by_ci: Dict[int, int] = {}
+        # If set, auto-run current-video smart select once re-clustering finishes.
+        self._pending_auto_select_ci: Optional[int] = None
 
         self.selected_collection_idx = 0
         self.page_index = 0
@@ -1950,7 +1977,8 @@ class FrameSelectionWindow:
         ci     = self.selected_collection_idx
         groups = self.similarity_groups.get(ci, [])
         dup    = [g for g in groups if not g.is_unique]
-        for lb_idx, g in enumerate(dup, 1):
+        header_offset = 1 if self._cluster_threshold_by_ci.get(ci) is not None else 0
+        for lb_idx, g in enumerate(dup, 1 + header_offset):
             if g.group_id == group_id:
                 self.groups_listbox.selection_clear(0, tk.END)
                 self.groups_listbox.selection_set(lb_idx)
@@ -1962,7 +1990,8 @@ class FrameSelectionWindow:
         ci     = self.selected_collection_idx
         groups = self.similarity_groups.get(ci, [])
         dup    = [g for g in groups if not g.is_unique]
-        lb_idx = len(dup) + 2
+        header_offset = 1 if self._cluster_threshold_by_ci.get(ci) is not None else 0
+        lb_idx = len(dup) + 2 + header_offset
         self.groups_listbox.selection_clear(0, tk.END)
         self.groups_listbox.selection_set(lb_idx)
         self.groups_listbox.see(lb_idx)
@@ -2023,27 +2052,40 @@ class FrameSelectionWindow:
         self._refresh_grid()
 
     # ─── Clustering ───────────────────────────────────────────────
-    def _start_clustering(self, ci: int):
-        if ci in self.similarity_groups:
+    def _start_clustering(self, ci: int, force_refresh: bool = False):
+        threshold = int(self.threshold_var.get())
+        cached_threshold = self._cluster_threshold_by_ci.get(ci)
+        has_fresh_cache = (ci in self.similarity_groups and cached_threshold == threshold)
+
+        if has_fresh_cache and not force_refresh:
             self._rebuild_frame_lookup(ci)
             self._populate_groups_listbox(ci)
             self._rebuild_group_previews(ci)
             return
+        # Invalidate stale cache when strictness changed or explicit refresh requested.
+        self.similarity_groups.pop(ci, None)
+        self._cluster_threshold_by_ci.pop(ci, None)
         _, paths = self.video_collections[ci]
         if not paths:
             self.similarity_groups[ci] = []
+            self._cluster_threshold_by_ci[ci] = threshold
             self.frame_to_group = {}
             self._populate_groups_listbox(ci)
             self._rebuild_group_previews(ci)
             return
         self.groups_listbox.delete(0, tk.END)
-        self.groups_listbox.insert(tk.END, "Analysing frames, please wait...")
+        self.groups_listbox.insert(tk.END, f"Analysing frames with strictness {threshold}...")
         self.win.update_idletasks()
-        threshold = self.threshold_var.get()
+        token = self._cluster_token_by_ci.get(ci, 0) + 1
+        self._cluster_token_by_ci[ci] = token
 
         def _run():
             groups = cluster_frames_by_similarity(paths, threshold=threshold)
+            # If a newer run started for this video, drop this stale result.
+            if self._cluster_token_by_ci.get(ci) != token:
+                return
             self.similarity_groups[ci] = groups
+            self._cluster_threshold_by_ci[ci] = threshold
             self.win.after(0, lambda: self._clustering_finished(ci))
 
         threading.Thread(target=_run, daemon=True).start()
@@ -2053,6 +2095,9 @@ class FrameSelectionWindow:
         self._populate_groups_listbox(ci)
         self._rebuild_group_previews(ci)
         self._refresh_grid()
+        if self._pending_auto_select_ci == ci:
+            self._pending_auto_select_ci = None
+            self.win.after(0, self._smart_select_current)
 
     def _rebuild_frame_lookup(self, ci: int):
         """Build a mapping from frame_index → (group_id, similarity_percent)."""
@@ -2071,6 +2116,11 @@ class FrameSelectionWindow:
         if not groups:
             self.groups_listbox.insert(tk.END, "(no frames found)")
             return
+        used_threshold = self._cluster_threshold_by_ci.get(ci)
+        if used_threshold is not None:
+            self.groups_listbox.insert(
+                tk.END, f"Analysis strictness used: {used_threshold}"
+            )
 
         dup_groups  = [g for g in groups if not g.is_unique]
         uniq_groups = [g for g in groups if g.is_unique]
@@ -2092,8 +2142,9 @@ class FrameSelectionWindow:
     def _rerun_clustering(self):
         ci = self.selected_collection_idx
         self.similarity_groups.pop(ci, None)
+        self._cluster_threshold_by_ci.pop(ci, None)
         self._current_filter = None
-        self._start_clustering(ci)
+        self._start_clustering(ci, force_refresh=True)
 
     # ─── Group filtering ──────────────────────────────────────────
     def _on_group_selected(self, event):
@@ -2106,13 +2157,14 @@ class FrameSelectionWindow:
         dup_groups  = [g for g in groups if not g.is_unique]
         uniq_groups = [g for g in groups if g.is_unique]
         _, paths   = self.video_collections[ci]
+        header_offset = 1 if self._cluster_threshold_by_ci.get(ci) is not None else 0
 
-        # idx 0 is the "similar groups" header, idx len(dup)+1 is the "unique" header
-        if idx == 0 or idx == len(dup_groups) + 1:
+        # Header rows are not selectable.
+        if idx == header_offset or idx == len(dup_groups) + 1 + header_offset:
             return
 
-        if 1 <= idx <= len(dup_groups):
-            g        = dup_groups[idx - 1]
+        if (1 + header_offset) <= idx <= (len(dup_groups) + header_offset):
+            g        = dup_groups[idx - (1 + header_offset)]
             path_set = set(g.frame_paths)
             self._filtered_indices = [fi for fi, p in enumerate(paths) if p in path_set]
             self._current_filter   = g.group_id
@@ -2126,7 +2178,7 @@ class FrameSelectionWindow:
                     f"Tip: You only need to keep the last frame."
                 )
             )
-        elif idx == len(dup_groups) + 2:
+        elif idx == len(dup_groups) + 2 + header_offset:
             path_set = set(p for g in uniq_groups for p in g.frame_paths)
             self._filtered_indices = [fi for fi, p in enumerate(paths) if p in path_set]
             self._current_filter   = -1
@@ -2201,6 +2253,17 @@ class FrameSelectionWindow:
     def _smart_select_current(self):
         """For the current video, keep the last frame of each similar group + all unique frames."""
         ci = self.selected_collection_idx
+        target_threshold = int(self.threshold_var.get())
+        analyzed_threshold = self._cluster_threshold_by_ci.get(ci)
+        if analyzed_threshold != target_threshold:
+            self._pending_auto_select_ci = ci
+            self._start_clustering(ci, force_refresh=True)
+            messagebox.showinfo(
+                "Refreshing Analysis",
+                f"Re-analysing with strictness {target_threshold} before auto-selecting.\n"
+                "Auto-select will run when refresh completes."
+            )
+            return
         _, all_paths = self.video_collections[ci]
         groups = self.similarity_groups.get(ci, [])
         if not groups:
@@ -2234,9 +2297,13 @@ class FrameSelectionWindow:
         )
 
     def _smart_select_all_videos(self):
-        """Apply auto-selection to every video in the queue, clustering any not yet done."""
-        pending = [ci for ci in range(len(self.video_collections))
-                   if ci not in self.similarity_groups]
+        """Apply auto-selection to every video using the *current* strictness value."""
+        target_threshold = int(self.threshold_var.get())
+        pending = [
+            ci for ci in range(len(self.video_collections))
+            if (ci not in self.similarity_groups)
+            or (self._cluster_threshold_by_ci.get(ci) != target_threshold)
+        ]
 
         if not pending:
             self._apply_auto_select_all()
@@ -2250,7 +2317,7 @@ class FrameSelectionWindow:
         prog_win.grab_set()
         prog_win.resizable(False, False)
 
-        tk.Label(prog_win, text="Analysing similarity for all videos...",
+        tk.Label(prog_win, text=f"Analysing all videos (strictness {target_threshold})...",
                  font=("", 10, "bold")).pack(pady=(16, 4))
         status_lbl = tk.Label(prog_win, text="", font=("", 9), fg="#555")
         status_lbl.pack()
@@ -2262,9 +2329,9 @@ class FrameSelectionWindow:
 
         def cluster_one(ci):
             _, paths  = self.video_collections[ci]
-            threshold = self.threshold_var.get()
-            groups    = cluster_frames_by_similarity(paths, threshold=threshold)
+            groups    = cluster_frames_by_similarity(paths, threshold=target_threshold)
             self.similarity_groups[ci] = groups
+            self._cluster_threshold_by_ci[ci] = target_threshold
             with lock:
                 completed[0] += 1
                 done = completed[0]
@@ -2724,6 +2791,7 @@ class FrameSelectionWindow:
                         all_images, output_path, self.meta,
                         bar_height=PAGE_NUMBER_BAR_PTS,
                         optimize=self.optimize_var.get(),
+                        total_pages=len(all_images),
                         progress_callback=on_progress,
                     )
                     last_output_pdf = output_path
@@ -2745,6 +2813,7 @@ class FrameSelectionWindow:
                         progress_callback=on_progress,
                         bar_height=PAGE_NUMBER_BAR_PTS,
                         start_page_number=1,
+                        total_pages=len(selected),
                     )
                     done_msg += (
                         f"\n\nSelected frames were also exported as PNG files in:\n"

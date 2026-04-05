@@ -170,6 +170,34 @@
     margin-bottom: 1.25rem;
   }
 
+  .meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 1rem;
+  }
+
+  .meta-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 6px;
+  }
+
+  .meta-field input {
+    width: 100%;
+    border: 0.5px solid var(--border-secondary);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+
   button.primary {
     flex: 1;
     padding: 10px;
@@ -330,6 +358,20 @@
     <button class="secondary" onclick="clearAll()">Clear</button>
   </div>
 
+  <div class="card">
+    <span class="label">csv export defaults</span>
+    <div class="meta-grid">
+      <div class="meta-field">
+        <label for="titleInput">Title</label>
+        <input id="titleInput" type="text" placeholder="e.g. Biology Notes">
+      </div>
+      <div class="meta-field">
+        <label for="authorInput">Author</label>
+        <input id="authorInput" type="text" placeholder="e.g. Hamza Siyam">
+      </div>
+    </div>
+  </div>
+
   <div class="stats-grid hidden" id="stats">
     <div class="stat"><div class="stat-n" id="stTotal">0</div><div class="stat-l">total</div></div>
     <div class="stat"><div class="stat-n" style="color:var(--text-success)" id="stOk">0</div><div class="stat-l">converted</div></div>
@@ -342,6 +384,7 @@
       <div class="copy-row">
         <button class="copy-btn" id="btnCopyAll" onclick="copyAll()">copy all</button>
         <button class="copy-btn" id="btnCopyList" onclick="copyList()">copy as list</button>
+        <button class="copy-btn" onclick="downloadCsv()">download csv</button>
       </div>
     </div>
     <div id="linkList"></div>
@@ -471,6 +514,39 @@
   function copyOne(btn, link) { copyText(link, btn, 'copy'); }
   function copyAll() { copyText(converted.map(g => g.link).join('\n'), document.getElementById('btnCopyAll'), 'copy all'); }
   function copyList() { copyText(converted.map((g, i) => `${i+1}. ${g.link}`).join('\n'), document.getElementById('btnCopyList'), 'copy as list'); }
+
+  function csvCell(value) {
+    const s = String(value ?? '');
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+
+  function downloadCsv() {
+    if (!converted.length) {
+      showToast('convert links first');
+      return;
+    }
+
+    const title = document.getElementById('titleInput').value.trim();
+    const author = document.getElementById('authorInput').value.trim();
+    const header = ['Highlight', 'Title', 'Author'].map(csvCell).join(',');
+    const rows = converted.map(({ link }) => {
+      const highlight = `![](${link})`;
+      return [highlight, title, author].map(csvCell).join(',');
+    });
+
+    const csv = '\uFEFF' + [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'converted_links.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('csv downloaded');
+  }
 
   function clearAll() {
     document.getElementById('ta').value = '';

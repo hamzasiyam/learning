@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from typing import List
+from typing import List, Optional
 
 import cv2
 import numpy as np
@@ -19,13 +19,20 @@ except Exception:
     PdfWriter = None
 
 
-def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int) -> np.ndarray:
+def add_page_number_bar(
+    image: np.ndarray,
+    page_num: int,
+    bar_height: int,
+    total_pages: Optional[int] = None,
+) -> np.ndarray:
     """Append a black footer bar and page number text to an image.
 
     Args:
         image (np.ndarray): Source image array (BGR/BGRA/gray).
         page_num (int): Page number to render.
         bar_height (int): Footer bar height in pixels.
+        total_pages (Optional[int]): Total pages in this export batch. If provided,
+            footer text becomes `Page X/Y`.
 
     Returns:
         np.ndarray: Updated image array with footer bar.
@@ -42,9 +49,13 @@ def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int) -> np
 
     page_canvas = np.zeros((h + bar_height, w, 3), dtype=np.uint8)
     page_canvas[:h, :] = image
+    if total_pages and total_pages > 0:
+        label = f"Page {page_num}/{total_pages}"
+    else:
+        label = f"Page {page_num}"
     cv2.putText(
         page_canvas,
-        f"Page {page_num}",
+        label,
         (12, h + int(bar_height * 0.75)),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.6,
@@ -55,7 +66,14 @@ def add_page_number_bar(image: np.ndarray, page_num: int, bar_height: int) -> np
     return page_canvas
 
 
-def export_images_as_png(image_paths: List[str], output_dir: str, progress_callback=None, bar_height: int = 36, start_page_number: int = 1) -> str:
+def export_images_as_png(
+    image_paths: List[str],
+    output_dir: str,
+    progress_callback=None,
+    bar_height: int = 36,
+    start_page_number: int = 1,
+    total_pages: Optional[int] = None,
+) -> str:
     """Export selected images as numbered PNG files with optional footer bar.
 
     Args:
@@ -64,12 +82,15 @@ def export_images_as_png(image_paths: List[str], output_dir: str, progress_callb
         progress_callback: Optional callback for progress updates.
         bar_height (int): Footer bar height in pixels.
         start_page_number (int): First page number to assign.
+        total_pages (Optional[int]): Total pages in batch for `Page X/Y` footer text.
 
     Returns:
         str: Output directory path containing exported PNG files.
     """
     os.makedirs(output_dir, exist_ok=True)
     total = len(image_paths)
+    if total_pages is None:
+        total_pages = max(0, start_page_number - 1) + total
     for i, img_path in enumerate(image_paths):
         page_num = start_page_number + i
         # Report progress before processing each image.
@@ -78,7 +99,12 @@ def export_images_as_png(image_paths: List[str], output_dir: str, progress_callb
         frame = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
         if frame is None:
             raise RuntimeError(f"Could not read image for PNG export: {os.path.basename(img_path)}")
-        frame = add_page_number_bar(frame, page_num=page_num, bar_height=bar_height)
+        frame = add_page_number_bar(
+            frame,
+            page_num=page_num,
+            bar_height=bar_height,
+            total_pages=total_pages,
+        )
         out_path = os.path.join(output_dir, f"Page {page_num}.png")
         if not cv2.imwrite(out_path, frame):
             raise RuntimeError(f"Could not write PNG file: {os.path.basename(out_path)}")
@@ -183,7 +209,18 @@ def estimate_pdf_size_bytes(image_paths, optimize=False):
     return int(total * (1.15 if optimize else 1.12))
 
 
-def build_pdf_from_images(image_paths, output_pdf, meta, bar_height=36, progress_callback=None, optimize=False, start_page_number=1, progress_offset=0, progress_total=None):
+def build_pdf_from_images(
+    image_paths,
+    output_pdf,
+    meta,
+    bar_height=36,
+    progress_callback=None,
+    optimize=False,
+    start_page_number=1,
+    progress_offset=0,
+    progress_total=None,
+    total_pages: Optional[int] = None,
+):
     """Build a PDF from ordered images and optional page footer numbering.
 
     Args:
@@ -196,6 +233,7 @@ def build_pdf_from_images(image_paths, output_pdf, meta, bar_height=36, progress
         start_page_number (int): First page number displayed in footer.
         progress_offset (int): Completed pages from previous batch.
         progress_total (int | None): Global total pages for progress.
+        total_pages (int | None): Global total pages for footer text (`Page X/Y`).
 
     Returns:
         None: Writes a PDF to disk.
@@ -234,7 +272,11 @@ def build_pdf_from_images(image_paths, output_pdf, meta, bar_height=36, progress
             c.rect(0, 0, w, bar_height, fill=1, stroke=0)
             c.setFillColorRGB(1, 1, 1)
             c.setFont("Helvetica", 14)
-            c.drawString(12, bar_height * 0.25, f"Page {page_num}")
+            if total_pages and total_pages > 0:
+                footer_text = f"Page {page_num}/{total_pages}"
+            else:
+                footer_text = f"Page {page_num}"
+            c.drawString(12, bar_height * 0.25, footer_text)
             c.showPage()
     finally:
         if tmp_opt:
@@ -308,13 +350,21 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
     Returns:
         list[str]: Output PDF paths (single item if no split needed).
     """
+    total_pages = len(image_paths)
     batches = split_images_by_size(image_paths, target_size_mb, optimize=optimize)
     if len(batches) <= 1:
-        build_pdf_from_images(image_paths, output_pdf, meta, bar_height=bar_height, optimize=optimize, progress_callback=progress_callback)
+        build_pdf_from_images(
+            image_paths,
+            output_pdf,
+            meta,
+            bar_height=bar_height,
+            optimize=optimize,
+            progress_callback=progress_callback,
+            total_pages=total_pages,
+        )
         return [output_pdf]
 
     base, ext = os.path.splitext(output_pdf)
-    total_pages = len(image_paths)
     outputs: List[str] = []
     offset = 0
     for idx, batch in enumerate(batches, 1):
@@ -331,6 +381,7 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
             start_page_number=offset + 1,
             progress_offset=offset,
             progress_total=total_pages,
+            total_pages=total_pages,
             progress_callback=progress_callback,
         )
         offset += len(batch)
