@@ -1575,7 +1575,7 @@ class FrameSelectionWindow:
         tk.Label(slider_row, text="Strict", font=("", 8), bg="#f8f8f0", fg="#888").pack(side="left")
         self.threshold_var = tk.IntVar(value=DEFAULT_THRESHOLD)
         tk.Scale(
-            slider_row, from_=2, to=50, orient=tk.HORIZONTAL,
+            slider_row, from_=2, to=100, orient=tk.HORIZONTAL,
             variable=self.threshold_var, length=120, showvalue=True,
             bg="#f8f8f0", troughcolor="#c8e6c9"
         ).pack(side="left", padx=2)
