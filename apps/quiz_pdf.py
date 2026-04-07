@@ -313,6 +313,7 @@ class App(tk.Tk):
         self.fit_to_page_var = tk.BooleanVar(value=True)
         self.avoid_upscale_var = tk.BooleanVar(value=True)
         self.columns_var = tk.IntVar(value=1)
+        self.per_row_var = tk.IntVar(value=0)
 
         self._build_ui()
         self._style_defaults()
@@ -422,9 +423,14 @@ class App(tk.Tk):
 
         ttk.Label(compile_row, text="Letter size").pack(side="left", padx=12)
 
-        ttk.Label(compile_row, text="Side by side:").pack(side="left")
+        ttk.Label(compile_row, text="Images per page:").pack(side="left")
         ttk.Spinbox(compile_row, from_=1, to=20, textvariable=self.columns_var,
                     width=4).pack(side="left", padx=4)
+
+        ttk.Label(compile_row, text="Images per row:").pack(side="left")
+        ttk.Spinbox(compile_row, from_=0, to=20, textvariable=self.per_row_var,
+                    width=4).pack(side="left", padx=4)
+        ttk.Label(compile_row, text="(0 = no wrap)").pack(side="left")
 
     def choose_folder(self):
         """Prompt user for watch directory and enable Start when valid.
@@ -712,6 +718,7 @@ class App(tk.Tk):
         avail_h = page_h - 2 * margin
 
         columns = max(1, self.columns_var.get())
+        per_row = max(1, self.per_row_var.get()) if self.per_row_var.get() else columns
 
         try:
             with tempfile.TemporaryDirectory(prefix="imgpdf_") as tmp:
@@ -733,22 +740,36 @@ class App(tk.Tk):
 
                     if len(prepped_paths) > 1:
                         imgs = [Image.open(p) for p in prepped_paths]
-                        target_h = min(im.height for im in imgs)
-                        resized = []
-                        for im in imgs:
-                            if im.height != target_h:
-                                new_w = int(im.width * target_h / im.height)
-                                im = im.resize((new_w, target_h), Image.LANCZOS)
-                            resized.append(im)
-                        total_w = sum(im.width for im in resized)
-                        composite = Image.new("RGB", (total_w, target_h))
-                        x_off = 0
-                        for im in resized:
-                            composite.paste(im, (x_off, 0))
-                            x_off += im.width
+
+                        row_strips = []
+                        for ri in range(0, len(imgs), per_row):
+                            row_imgs = imgs[ri:ri + per_row]
+                            row_h = min(im.height for im in row_imgs)
+                            resized = []
+                            for im in row_imgs:
+                                if im.height != row_h:
+                                    new_w = int(im.width * row_h / im.height)
+                                    im = im.resize((new_w, row_h), Image.LANCZOS)
+                                resized.append(im)
+                            row_w = sum(im.width for im in resized)
+                            strip = Image.new("RGB", (row_w, row_h))
+                            x_off = 0
+                            for im in resized:
+                                strip.paste(im, (x_off, 0))
+                                x_off += im.width
+                            row_strips.append(strip)
+
+                        grid_w = max(s.width for s in row_strips)
+                        grid_h = sum(s.height for s in row_strips)
+                        composite = Image.new("RGB", (grid_w, grid_h))
+                        y_off = 0
+                        for strip in row_strips:
+                            composite.paste(strip, (0, y_off))
+                            y_off += strip.height
+
                         for im in imgs:
                             im.close()
-                        comp_path = os.path.join(tmp, f"row_{id(group):x}.jpg")
+                        comp_path = os.path.join(tmp, f"grid_{id(group):x}.jpg")
                         composite.save(comp_path, "JPEG", quality=jpeg_quality)
                         composite.close()
                         prepped = comp_path

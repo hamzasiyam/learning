@@ -19,6 +19,18 @@ except Exception:
     PdfWriter = None
 
 
+def _normalize_bgr(images: List[np.ndarray]) -> List[np.ndarray]:
+    """Convert a list of images to BGR, handling grayscale and BGRA."""
+    out = []
+    for img in images:
+        if img.ndim == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        elif img.shape[2] == 4:
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        out.append(img)
+    return out
+
+
 def stitch_images_row(images: List[np.ndarray]) -> np.ndarray:
     """Place multiple images side by side into a single row.
 
@@ -26,21 +38,9 @@ def stitch_images_row(images: List[np.ndarray]) -> np.ndarray:
     minimum in the group) so the horizontal join is seamless.
     """
     if len(images) == 1:
-        img = images[0]
-        if img.ndim == 2:
-            return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        if img.shape[2] == 4:
-            return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-        return img
+        return _normalize_bgr(images)[0]
 
-    bgr = []
-    for img in images:
-        if img.ndim == 2:
-            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        elif img.shape[2] == 4:
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-        bgr.append(img)
-
+    bgr = _normalize_bgr(images)
     target_h = min(im.shape[0] for im in bgr)
     resized = []
     for img in bgr:
@@ -51,6 +51,33 @@ def stitch_images_row(images: List[np.ndarray]) -> np.ndarray:
         resized.append(img)
 
     return np.hstack(resized)
+
+
+def stitch_images_grid(images: List[np.ndarray], per_row: int) -> np.ndarray:
+    """Arrange images into a grid with *per_row* columns.
+
+    Rows are stitched horizontally, then stacked vertically.  An incomplete
+    last row is padded with black to match the width of full rows.
+    """
+    if len(images) == 1:
+        return _normalize_bgr(images)[0]
+    if per_row >= len(images):
+        return stitch_images_row(images)
+
+    rows: List[np.ndarray] = []
+    for i in range(0, len(images), per_row):
+        rows.append(stitch_images_row(images[i:i + per_row]))
+
+    target_w = max(r.shape[1] for r in rows)
+    padded = []
+    for row in rows:
+        h, w = row.shape[:2]
+        if w < target_w:
+            pad = np.zeros((h, target_w - w, 3), dtype=np.uint8)
+            row = np.hstack([row, pad])
+        padded.append(row)
+
+    return np.vstack(padded)
 
 
 def add_page_number_bar(
@@ -110,6 +137,7 @@ def export_images_as_png(
     start_page_number: int = 1,
     total_pages: Optional[int] = None,
     columns: int = 1,
+    per_row: int = 0,
 ) -> str:
     """Export selected images as numbered PNG files with optional footer bar.
 
@@ -120,12 +148,14 @@ def export_images_as_png(
         bar_height (int): Footer bar height in pixels.
         start_page_number (int): First page number to assign.
         total_pages (Optional[int]): Total pages in batch for `Page X/Y` footer text.
-        columns (int): Number of images placed side by side per output file.
+        columns (int): Total images per output file.
+        per_row (int): Images per row within the grid (0 = same as columns).
 
     Returns:
         str: Output directory path containing exported PNG files.
     """
     columns = max(1, int(columns))
+    per_row = max(1, int(per_row)) if per_row else columns
     os.makedirs(output_dir, exist_ok=True)
 
     total_images = len(image_paths)
@@ -155,14 +185,20 @@ def export_images_as_png(
         else:
             footer = f"Page {first_img}"
 
-        composite = stitch_images_row(frames) if len(frames) > 1 else frames[0]
+        if len(frames) > 1:
+            composite = stitch_images_grid(frames, per_row)
+        else:
+            composite = frames[0]
         composite = add_page_number_bar(
             composite,
             page_num=first_img,
             bar_height=bar_height,
             footer_label=footer,
         )
-        out_path = os.path.join(output_dir, f"Page {i + 1}.png")
+        if columns > 1:
+            out_path = os.path.join(output_dir, f"Photos {first_img}-{last_img}.png")
+        else:
+            out_path = os.path.join(output_dir, f"Page {first_img}.png")
         if not cv2.imwrite(out_path, composite):
             raise RuntimeError(f"Could not write PNG file: {os.path.basename(out_path)}")
     if progress_callback:
@@ -278,6 +314,7 @@ def build_pdf_from_images(
     progress_total=None,
     total_pages: Optional[int] = None,
     columns: int = 1,
+    per_row: int = 0,
 ):
     """Build a PDF from ordered images and optional page footer numbering.
 
@@ -292,7 +329,8 @@ def build_pdf_from_images(
         progress_offset (int): Completed pages from previous batch.
         progress_total (int | None): Global total pages for progress.
         total_pages (int | None): Global total pages for footer text (`Page X/Y`).
-        columns (int): Number of images placed side by side per page.
+        columns (int): Total images per page.
+        per_row (int): Images per row within the grid (0 = same as columns).
 
     Returns:
         None: Writes a PDF to disk.
@@ -300,6 +338,7 @@ def build_pdf_from_images(
     from reportlab.lib.colors import black
 
     columns = max(1, int(columns))
+    per_row = max(1, int(per_row)) if per_row else columns
     total_images = len(image_paths)
     groups = [image_paths[i:i + columns] for i in range(0, total_images, columns)]
 
@@ -342,7 +381,10 @@ def build_pdf_from_images(
                 bad = [os.path.basename(p) for p, f in zip(group, cv_frames) if f is None]
                 raise RuntimeError(f"Could not read image(s): {', '.join(bad)}")
 
-            composite = stitch_images_row(cv_frames) if len(cv_frames) > 1 else cv_frames[0]
+            if len(cv_frames) > 1:
+                composite = stitch_images_grid(cv_frames, per_row)
+            else:
+                composite = cv_frames[0]
             if composite.ndim == 2:
                 composite = cv2.cvtColor(composite, cv2.COLOR_GRAY2BGR)
             elif composite.shape[2] == 4:
@@ -428,7 +470,8 @@ def split_images_by_size(image_paths, target_size_mb, optimize=False):
 
 
 def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=36,
-                     optimize=False, progress_callback=None, columns: int = 1):
+                     optimize=False, progress_callback=None, columns: int = 1,
+                     per_row: int = 0):
     """Export one or more PDF parts constrained by target size.
 
     Args:
@@ -439,7 +482,8 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
         bar_height (int): Footer bar height.
         optimize (bool): Whether optimization is enabled.
         progress_callback: Optional callback for progress updates.
-        columns (int): Number of images placed side by side per page.
+        columns (int): Total images per page.
+        per_row (int): Images per row within the grid (0 = same as columns).
 
     Returns:
         list[str]: Output PDF paths (single item if no split needed).
@@ -456,6 +500,7 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
             progress_callback=progress_callback,
             total_pages=total_pages,
             columns=columns,
+            per_row=per_row,
         )
         return [output_pdf]
 
@@ -463,10 +508,12 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
     outputs: List[str] = []
     offset = 0
     for idx, batch in enumerate(batches, 1):
-        part_out = f"{base}_part_{idx:03d}{ext}"
+        first_photo = offset + 1
+        last_photo = offset + len(batch)
+        part_out = f"{base}_photos_{first_photo}-{last_photo}{ext}"
         part_meta = dict(meta)
         title = meta.get("title", "Untitled").strip() or "Untitled"
-        part_meta["title"] = f"{title} (Part {idx} of {len(batches)})"
+        part_meta["title"] = f"{title} (Photos {first_photo}-{last_photo})"
         build_pdf_from_images(
             batch,
             part_out,
@@ -479,6 +526,7 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
             total_pages=total_pages,
             progress_callback=progress_callback,
             columns=columns,
+            per_row=per_row,
         )
         offset += len(batch)
         outputs.append(part_out)
