@@ -312,6 +312,7 @@ class App(tk.Tk):
         self.preset_var = tk.StringVar(value="Balanced")  # High Quality / Balanced / Small
         self.fit_to_page_var = tk.BooleanVar(value=True)
         self.avoid_upscale_var = tk.BooleanVar(value=True)
+        self.columns_var = tk.IntVar(value=1)
 
         self._build_ui()
         self._style_defaults()
@@ -419,7 +420,11 @@ class App(tk.Tk):
 
         ttk.Button(compile_row, text="Refresh estimate", command=self.run_estimate_now).pack(side="left", padx=(8, 0))
 
-        ttk.Label(compile_row, text="One image per page • Letter size").pack(side="left", padx=12)
+        ttk.Label(compile_row, text="Letter size").pack(side="left", padx=12)
+
+        ttk.Label(compile_row, text="Side by side:").pack(side="left")
+        ttk.Spinbox(compile_row, from_=1, to=20, textvariable=self.columns_var,
+                    width=4).pack(side="left", padx=4)
 
     def choose_folder(self):
         """Prompt user for watch directory and enable Start when valid.
@@ -706,35 +711,63 @@ class App(tk.Tk):
         avail_w = page_w - 2 * margin
         avail_h = page_h - 2 * margin
 
+        columns = max(1, self.columns_var.get())
+
         try:
             with tempfile.TemporaryDirectory(prefix="imgpdf_") as tmp:
                 c = canvas.Canvas(save_path, pagesize=letter)
 
-                for src in self.known_new_files:
-                    prepped = preprocess_image_for_pdf(
-                        src_path=src,
-                        temp_dir=tmp,
-                        max_dpi_cap=max_dpi_cap,
-                        jpeg_quality=jpeg_quality,
-                        subsampling=subsampling,
-                    )
+                groups = [self.known_new_files[i:i + columns]
+                          for i in range(0, len(self.known_new_files), columns)]
+
+                for group in groups:
+                    prepped_paths = []
+                    for src in group:
+                        prepped_paths.append(preprocess_image_for_pdf(
+                            src_path=src,
+                            temp_dir=tmp,
+                            max_dpi_cap=max_dpi_cap,
+                            jpeg_quality=jpeg_quality,
+                            subsampling=subsampling,
+                        ))
+
+                    if len(prepped_paths) > 1:
+                        imgs = [Image.open(p) for p in prepped_paths]
+                        target_h = min(im.height for im in imgs)
+                        resized = []
+                        for im in imgs:
+                            if im.height != target_h:
+                                new_w = int(im.width * target_h / im.height)
+                                im = im.resize((new_w, target_h), Image.LANCZOS)
+                            resized.append(im)
+                        total_w = sum(im.width for im in resized)
+                        composite = Image.new("RGB", (total_w, target_h))
+                        x_off = 0
+                        for im in resized:
+                            composite.paste(im, (x_off, 0))
+                            x_off += im.width
+                        for im in imgs:
+                            im.close()
+                        comp_path = os.path.join(tmp, f"row_{id(group):x}.jpg")
+                        composite.save(comp_path, "JPEG", quality=jpeg_quality)
+                        composite.close()
+                        prepped = comp_path
+                    else:
+                        prepped = prepped_paths[0]
 
                     with Image.open(prepped) as im:
                         iw_px, ih_px = im.size
 
-                    # Treat pixels as points at 72 dpi; we're fitting to page anyway.
                     nat_w = float(iw_px)
                     nat_h = float(ih_px)
 
                     if fit_within_margins:
                         scale_fit = min(avail_w / nat_w, avail_h / nat_h)
                         if avoid_upscale:
-                            # Cap scale at 1.0 so small images are not stretched (blur).
                             scale_fit = min(scale_fit, 1.0)
                         draw_w = nat_w * scale_fit
                         draw_h = nat_h * scale_fit
                     else:
-                        # Draw at native pixel size (may exceed page; user opted out of margin fit).
                         draw_w, draw_h = nat_w, nat_h
 
                     x = (page_w - draw_w) / 2

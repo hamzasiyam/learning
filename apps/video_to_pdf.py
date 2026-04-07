@@ -1832,6 +1832,15 @@ class FrameSelectionWindow:
                  bg="#1f2d3a", fg="white", insertbackground="white",
                  relief="flat").pack(side="left", padx=4)
 
+        cols_row = tk.Frame(c5, bg="#2c3e50")
+        cols_row.pack(fill="x", padx=10, pady=(0, 2))
+        tk.Label(cols_row, text="Images side by side:", bg="#2c3e50",
+                 fg="#d7dde2", font=("", 8)).pack(side="left")
+        self.columns_var = tk.IntVar(value=1)
+        tk.Spinbox(cols_row, from_=1, to=20, textvariable=self.columns_var,
+                   width=4, bg="#1f2d3a", fg="white", insertbackground="white",
+                   relief="flat", buttonbackground="#3a4f5f").pack(side="left", padx=4)
+
         _action_button("Create PDF from Selected Frames", self._create_pdf, bg="#1565c0")
         _action_button("Show File Size Estimate",         self._show_size_info, bg="#37474f")
 
@@ -2785,6 +2794,7 @@ class FrameSelectionWindow:
                         bar_height=PAGE_NUMBER_BAR_PTS,
                         optimize=self.optimize_var.get(),
                         progress_callback=on_progress,
+                        columns=self.columns_var.get(),
                     )
                     last_output_pdf = outputs[0] if outputs else split_output_path
                     done_msg = (
@@ -2799,6 +2809,7 @@ class FrameSelectionWindow:
                         optimize=self.optimize_var.get(),
                         total_pages=len(all_images),
                         progress_callback=on_progress,
+                        columns=self.columns_var.get(),
                     )
                     last_output_pdf = output_path
                     done_msg = (
@@ -2820,6 +2831,7 @@ class FrameSelectionWindow:
                         bar_height=PAGE_NUMBER_BAR_PTS,
                         start_page_number=1,
                         total_pages=len(selected),
+                        columns=self.columns_var.get(),
                     )
                     done_msg += (
                         f"\n\nSelected frames were also exported as PNG files in:\n"

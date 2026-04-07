@@ -19,11 +19,46 @@ except Exception:
     PdfWriter = None
 
 
+def stitch_images_row(images: List[np.ndarray]) -> np.ndarray:
+    """Place multiple images side by side into a single row.
+
+    All images are normalised to BGR and scaled to a common height (the
+    minimum in the group) so the horizontal join is seamless.
+    """
+    if len(images) == 1:
+        img = images[0]
+        if img.ndim == 2:
+            return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        if img.shape[2] == 4:
+            return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        return img
+
+    bgr = []
+    for img in images:
+        if img.ndim == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        elif img.shape[2] == 4:
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        bgr.append(img)
+
+    target_h = min(im.shape[0] for im in bgr)
+    resized = []
+    for img in bgr:
+        h, w = img.shape[:2]
+        if h != target_h:
+            new_w = int(w * target_h / h)
+            img = cv2.resize(img, (new_w, target_h), interpolation=cv2.INTER_AREA)
+        resized.append(img)
+
+    return np.hstack(resized)
+
+
 def add_page_number_bar(
     image: np.ndarray,
     page_num: int,
     bar_height: int,
     total_pages: Optional[int] = None,
+    footer_label: Optional[str] = None,
 ) -> np.ndarray:
     """Append a black footer bar and page number text to an image.
 
@@ -33,15 +68,14 @@ def add_page_number_bar(
         bar_height (int): Footer bar height in pixels.
         total_pages (Optional[int]): Total pages in this export batch. If provided,
             footer text becomes `Page X/Y`.
+        footer_label (Optional[str]): Explicit label overriding the default format.
 
     Returns:
         np.ndarray: Updated image array with footer bar.
     """
-    # If bar height is disabled, return image unchanged.
     if bar_height <= 0:
         return image
     h, w = image.shape[:2]
-    # Normalize image to BGR so footer drawing works consistently.
     if image.ndim == 2:
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     elif image.shape[2] == 4:
@@ -49,7 +83,9 @@ def add_page_number_bar(
 
     page_canvas = np.zeros((h + bar_height, w, 3), dtype=np.uint8)
     page_canvas[:h, :] = image
-    if total_pages and total_pages > 0:
+    if footer_label:
+        label = footer_label
+    elif total_pages and total_pages > 0:
         label = f"Page {page_num}/{total_pages}"
     else:
         label = f"Page {page_num}"
@@ -73,6 +109,7 @@ def export_images_as_png(
     bar_height: int = 36,
     start_page_number: int = 1,
     total_pages: Optional[int] = None,
+    columns: int = 1,
 ) -> str:
     """Export selected images as numbered PNG files with optional footer bar.
 
@@ -83,33 +120,53 @@ def export_images_as_png(
         bar_height (int): Footer bar height in pixels.
         start_page_number (int): First page number to assign.
         total_pages (Optional[int]): Total pages in batch for `Page X/Y` footer text.
+        columns (int): Number of images placed side by side per output file.
 
     Returns:
         str: Output directory path containing exported PNG files.
     """
+    columns = max(1, int(columns))
     os.makedirs(output_dir, exist_ok=True)
-    total = len(image_paths)
+
+    total_images = len(image_paths)
+    groups = [image_paths[i:i + columns] for i in range(0, total_images, columns)]
+    num_groups = len(groups)
     if total_pages is None:
-        total_pages = max(0, start_page_number - 1) + total
-    for i, img_path in enumerate(image_paths):
-        page_num = start_page_number + i
-        # Report progress before processing each image.
+        total_pages = max(0, start_page_number - 1) + total_images
+
+    for i, group in enumerate(groups):
         if progress_callback:
-            progress_callback(i, total, f"Exporting PNG {i + 1} of {total}")
-        frame = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
-        if frame is None:
-            raise RuntimeError(f"Could not read image for PNG export: {os.path.basename(img_path)}")
-        frame = add_page_number_bar(
-            frame,
-            page_num=page_num,
+            progress_callback(i, num_groups, f"Exporting PNG {i + 1} of {num_groups}")
+
+        frames = []
+        for img_path in group:
+            frame = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
+            if frame is None:
+                raise RuntimeError(f"Could not read image for PNG export: {os.path.basename(img_path)}")
+            frames.append(frame)
+
+        first_img = start_page_number + i * columns
+        last_img = first_img + len(group) - 1
+
+        if columns > 1:
+            footer = f"Photos {first_img}-{last_img} / {total_pages}"
+        elif total_pages and total_pages > 0:
+            footer = f"Page {first_img}/{total_pages}"
+        else:
+            footer = f"Page {first_img}"
+
+        composite = stitch_images_row(frames) if len(frames) > 1 else frames[0]
+        composite = add_page_number_bar(
+            composite,
+            page_num=first_img,
             bar_height=bar_height,
-            total_pages=total_pages,
+            footer_label=footer,
         )
-        out_path = os.path.join(output_dir, f"Page {page_num}.png")
-        if not cv2.imwrite(out_path, frame):
+        out_path = os.path.join(output_dir, f"Page {i + 1}.png")
+        if not cv2.imwrite(out_path, composite):
             raise RuntimeError(f"Could not write PNG file: {os.path.basename(out_path)}")
     if progress_callback:
-        progress_callback(total, total, "PNG export complete")
+        progress_callback(num_groups, num_groups, "PNG export complete")
     return output_dir
 
 
@@ -220,6 +277,7 @@ def build_pdf_from_images(
     progress_offset=0,
     progress_total=None,
     total_pages: Optional[int] = None,
+    columns: int = 1,
 ):
     """Build a PDF from ordered images and optional page footer numbering.
 
@@ -234,37 +292,76 @@ def build_pdf_from_images(
         progress_offset (int): Completed pages from previous batch.
         progress_total (int | None): Global total pages for progress.
         total_pages (int | None): Global total pages for footer text (`Page X/Y`).
+        columns (int): Number of images placed side by side per page.
 
     Returns:
         None: Writes a PDF to disk.
     """
     from reportlab.lib.colors import black
 
+    columns = max(1, int(columns))
+    total_images = len(image_paths)
+    groups = [image_paths[i:i + columns] for i in range(0, total_images, columns)]
+
     c = canvas.Canvas(output_pdf)
     c.setTitle(meta.get("title", ""))
     c.setAuthor(meta.get("author", ""))
     c.setSubject(meta.get("type", ""))
 
-    tmp_opt = tempfile.mkdtemp(prefix="video_to_pdf_opt_") if optimize else None
-    try:
-        full_total = progress_total or len(image_paths)
-        for i, img_path in enumerate(image_paths, 1):
-            page_num = start_page_number + i - 1
-            # Emit progress for this page render.
-            if progress_callback:
-                progress_callback(progress_offset + i, full_total, f"Writing page {page_num} of {start_page_number + len(image_paths) - 1}")
-            # If optimization is enabled, create a temporary compressed image.
-            if optimize and os.path.exists(img_path):
-                frame = cv2.imread(img_path)
-                if frame is not None:
-                    h, w = frame.shape[:2]
-                    if w > OPTIMIZE_MAX_WIDTH:
-                        frame = cv2.resize(frame, (OPTIMIZE_MAX_WIDTH, int(h * OPTIMIZE_MAX_WIDTH / w)), interpolation=cv2.INTER_AREA)
-                    opt_path = os.path.join(tmp_opt, f"opt_{i:06d}.jpg")
-                    cv2.imwrite(opt_path, frame, [cv2.IMWRITE_JPEG_QUALITY, OPTIMIZE_QUALITY])
-                    img_path = opt_path
+    num_groups = len(groups)
+    if total_pages is None:
+        total_pages = total_images
 
-            img = ImageReader(img_path)
+    tmp_dir = tempfile.mkdtemp(prefix="video_to_pdf_opt_")
+    try:
+        full_total = progress_total or num_groups
+        for gi, group in enumerate(groups):
+            if progress_callback:
+                progress_callback(
+                    progress_offset + gi + 1, full_total,
+                    f"Writing page {gi + 1} of {num_groups}",
+                )
+
+            cv_frames = []
+            for img_path in group:
+                if optimize and os.path.exists(img_path):
+                    frame = cv2.imread(img_path)
+                    if frame is not None:
+                        fh, fw = frame.shape[:2]
+                        if fw > OPTIMIZE_MAX_WIDTH:
+                            frame = cv2.resize(
+                                frame,
+                                (OPTIMIZE_MAX_WIDTH, int(fh * OPTIMIZE_MAX_WIDTH / fw)),
+                                interpolation=cv2.INTER_AREA,
+                            )
+                        cv_frames.append(frame)
+                        continue
+                cv_frames.append(cv2.imread(img_path, cv2.IMREAD_UNCHANGED))
+
+            if any(f is None for f in cv_frames):
+                bad = [os.path.basename(p) for p, f in zip(group, cv_frames) if f is None]
+                raise RuntimeError(f"Could not read image(s): {', '.join(bad)}")
+
+            composite = stitch_images_row(cv_frames) if len(cv_frames) > 1 else cv_frames[0]
+            if composite.ndim == 2:
+                composite = cv2.cvtColor(composite, cv2.COLOR_GRAY2BGR)
+            elif composite.shape[2] == 4:
+                composite = cv2.cvtColor(composite, cv2.COLOR_BGRA2BGR)
+
+            tmp_path = os.path.join(tmp_dir, f"page_{gi:06d}.jpg")
+            cv2.imwrite(tmp_path, composite, [cv2.IMWRITE_JPEG_QUALITY, OPTIMIZE_QUALITY if optimize else 95])
+
+            first_img = start_page_number + gi * columns
+            last_img = first_img + len(group) - 1
+
+            if columns > 1:
+                footer_text = f"Photos {first_img}-{last_img} / {total_pages}"
+            elif total_pages and total_pages > 0:
+                footer_text = f"Page {first_img}/{total_pages}"
+            else:
+                footer_text = f"Page {first_img}"
+
+            img = ImageReader(tmp_path)
             w, h = img.getSize()
             c.setPageSize((w, h + bar_height))
             c.drawImage(img, 0, bar_height, width=w, height=h)
@@ -272,15 +369,10 @@ def build_pdf_from_images(
             c.rect(0, 0, w, bar_height, fill=1, stroke=0)
             c.setFillColorRGB(1, 1, 1)
             c.setFont("Helvetica", 14)
-            if total_pages and total_pages > 0:
-                footer_text = f"Page {page_num}/{total_pages}"
-            else:
-                footer_text = f"Page {page_num}"
             c.drawString(12, bar_height * 0.25, footer_text)
             c.showPage()
     finally:
-        if tmp_opt:
-            cleanup_dir(tmp_opt)
+        cleanup_dir(tmp_dir)
     c.save()
     try:
         add_metadata_to_pdf(output_pdf, meta)
@@ -335,7 +427,8 @@ def split_images_by_size(image_paths, target_size_mb, optimize=False):
     return batches
 
 
-def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=36, optimize=False, progress_callback=None):
+def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=36,
+                     optimize=False, progress_callback=None, columns: int = 1):
     """Export one or more PDF parts constrained by target size.
 
     Args:
@@ -346,6 +439,7 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
         bar_height (int): Footer bar height.
         optimize (bool): Whether optimization is enabled.
         progress_callback: Optional callback for progress updates.
+        columns (int): Number of images placed side by side per page.
 
     Returns:
         list[str]: Output PDF paths (single item if no split needed).
@@ -361,6 +455,7 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
             optimize=optimize,
             progress_callback=progress_callback,
             total_pages=total_pages,
+            columns=columns,
         )
         return [output_pdf]
 
@@ -383,6 +478,7 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
             progress_total=total_pages,
             total_pages=total_pages,
             progress_callback=progress_callback,
+            columns=columns,
         )
         offset += len(batch)
         outputs.append(part_out)
