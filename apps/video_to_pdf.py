@@ -1822,6 +1822,12 @@ class FrameSelectionWindow:
             bg="#2c3e50", fg="white", selectcolor="#1e2e3e",
             activebackground="#2c3e50", activeforeground="white", font=("", 8)
         ).pack(anchor="w", padx=10, pady=(2, 0))
+        self.lossless_png_optimize_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            c5, text="Lossless optimize PNG export (smaller, slower)", variable=self.lossless_png_optimize_var,
+            bg="#2c3e50", fg="white", selectcolor="#1e2e3e",
+            activebackground="#2c3e50", activeforeground="white", font=("", 8)
+        ).pack(anchor="w", padx=22, pady=(0, 2))
 
         split_row = tk.Frame(c5, bg="#2c3e50")
         split_row.pack(fill="x", padx=10, pady=(0, 2))
@@ -2844,6 +2850,7 @@ class FrameSelectionWindow:
                         total_pages=len(selected),
                         columns=self.columns_var.get(),
                         per_row=self.per_row_var.get(),
+                        lossless_optimize=self.lossless_png_optimize_var.get(),
                     )
                     done_msg += (
                         f"\n\nSelected frames were also exported as PNG files in:\n"

@@ -138,6 +138,7 @@ def export_images_as_png(
     total_pages: Optional[int] = None,
     columns: int = 1,
     per_row: int = 0,
+    lossless_optimize: bool = False,
 ) -> str:
     """Export selected images as numbered PNG files with optional footer bar.
 
@@ -150,6 +151,8 @@ def export_images_as_png(
         total_pages (Optional[int]): Total pages in batch for `Page X/Y` footer text.
         columns (int): Total images per output file.
         per_row (int): Images per row within the grid (0 = same as columns).
+        lossless_optimize (bool): If True, uses strongest PNG compression
+            without changing image pixels.
 
     Returns:
         str: Output directory path containing exported PNG files.
@@ -199,7 +202,8 @@ def export_images_as_png(
             out_path = os.path.join(output_dir, f"Photos {first_img}-{last_img}.png")
         else:
             out_path = os.path.join(output_dir, f"Page {first_img}.png")
-        if not cv2.imwrite(out_path, composite):
+        write_params = [cv2.IMWRITE_PNG_COMPRESSION, 9] if lossless_optimize else []
+        if not cv2.imwrite(out_path, composite, write_params):
             raise RuntimeError(f"Could not write PNG file: {os.path.basename(out_path)}")
     if progress_callback:
         progress_callback(num_groups, num_groups, "PNG export complete")
