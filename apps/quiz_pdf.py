@@ -26,12 +26,43 @@ import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+
+
+def add_frame_number_watermark(image: Image.Image, frame_num: int) -> Image.Image:
+    """Draw a low-opacity gray frame number at bottom-right."""
+    base = image.convert("RGBA")
+    w, h = base.size
+    min_side = max(1, min(w, h))
+    font_size = max(28, int(min_side * 0.16))
+    margin = max(10, int(min_side * 0.04))
+
+    font = None
+    for font_name in ("arial.ttf", "DejaVuSans.ttf"):
+        try:
+            font = ImageFont.truetype(font_name, font_size)
+            break
+        except Exception:
+            continue
+    if font is None:
+        font = ImageFont.load_default()
+
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    label = str(frame_num)
+    left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+    text_w = right - left
+    text_h = bottom - top
+    x = max(margin, w - text_w - margin)
+    y = max(margin, h - text_h - margin)
+    draw.text((x, y), label, font=font, fill=(130, 130, 130, 88))
+
+    return Image.alpha_composite(base, overlay).convert("RGB")
 
 
 def is_image_name(name: str) -> bool:
@@ -727,7 +758,8 @@ class App(tk.Tk):
                 groups = [self.known_new_files[i:i + columns]
                           for i in range(0, len(self.known_new_files), columns)]
 
-                for group in groups:
+                for group_idx, group in enumerate(groups):
+                    group_start_num = 1 + group_idx * columns
                     prepped_paths = []
                     for src in group:
                         prepped_paths.append(preprocess_image_for_pdf(
@@ -740,32 +772,41 @@ class App(tk.Tk):
 
                     if len(prepped_paths) > 1:
                         imgs = [Image.open(p) for p in prepped_paths]
+                        frame_nums = [group_start_num + idx for idx in range(len(imgs))]
 
+                        sep_px = 3
                         row_strips = []
                         for ri in range(0, len(imgs), per_row):
                             row_imgs = imgs[ri:ri + per_row]
+                            row_nums = frame_nums[ri:ri + per_row]
                             row_h = min(im.height for im in row_imgs)
                             resized = []
-                            for im in row_imgs:
+                            for im, frame_num in zip(row_imgs, row_nums):
                                 if im.height != row_h:
                                     new_w = int(im.width * row_h / im.height)
                                     im = im.resize((new_w, row_h), Image.LANCZOS)
+                                im = add_frame_number_watermark(im, frame_num)
                                 resized.append(im)
-                            row_w = sum(im.width for im in resized)
+                            row_w = sum(im.width for im in resized) + sep_px * max(0, len(resized) - 1)
                             strip = Image.new("RGB", (row_w, row_h))
                             x_off = 0
-                            for im in resized:
+                            for idx, im in enumerate(resized):
                                 strip.paste(im, (x_off, 0))
                                 x_off += im.width
+                                if idx < len(resized) - 1:
+                                    x_off += sep_px
+                                im.close()
                             row_strips.append(strip)
 
                         grid_w = max(s.width for s in row_strips)
-                        grid_h = sum(s.height for s in row_strips)
+                        grid_h = sum(s.height for s in row_strips) + sep_px * max(0, len(row_strips) - 1)
                         composite = Image.new("RGB", (grid_w, grid_h))
                         y_off = 0
-                        for strip in row_strips:
+                        for idx, strip in enumerate(row_strips):
                             composite.paste(strip, (0, y_off))
                             y_off += strip.height
+                            if idx < len(row_strips) - 1:
+                                y_off += sep_px
 
                         for im in imgs:
                             im.close()
@@ -774,7 +815,12 @@ class App(tk.Tk):
                         composite.close()
                         prepped = comp_path
                     else:
-                        prepped = prepped_paths[0]
+                        single_path = prepped_paths[0]
+                        with Image.open(single_path) as single_img:
+                            single_marked = add_frame_number_watermark(single_img, group_start_num)
+                            single_marked.save(single_path, "JPEG", quality=jpeg_quality)
+                            single_marked.close()
+                        prepped = single_path
 
                     with Image.open(prepped) as im:
                         iw_px, ih_px = im.size

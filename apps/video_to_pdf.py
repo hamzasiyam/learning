@@ -18,6 +18,7 @@ The module expects to be run with the repository root on ``sys.path`` (e.g.
 
 import os
 import re
+import shutil
 import sys
 import time
 import tempfile
@@ -1121,10 +1122,12 @@ build_pdf_from_images = pdfm.build_pdf_from_images
 estimate_page_bytes = pdfm.estimate_page_bytes
 split_images_by_size = pdfm.split_images_by_size
 build_split_pdfs = pdfm.build_split_pdfs
+split_existing_pdf_by_size = pdfm.split_existing_pdf_by_size
 ensure_pdf_merge_available = pdfm.ensure_pdf_merge_available
 append_pdf_to_writer = pdfm.append_pdf_to_writer
 meta_to_pdf_metadata = pdfm.meta_to_pdf_metadata
 add_metadata_to_pdf = pdfm.add_metadata_to_pdf
+rasterize_pdf_to_images = pdfm.rasterize_pdf_to_images
 PdfWriter = pdfm.PdfWriter
 
 queue_items: List[QueueItem] = []
@@ -1252,15 +1255,7 @@ def build_combined_pdf():
         ui_set_status("Please add at least one video or PDF to the queue.")
         return
 
-    meta = {
-        "title":       title_var.get().strip() or "Untitled",
-        "author":      author_var.get().strip(),
-        "tags":        tags_var.get().strip(),
-        "type":        type_var.get().strip() or "PDF",
-        "published":   published_var.get().strip(),
-        "language":    language_var.get().strip(),
-        "cover_image": cover_var.get().strip(),
-    }
+    meta = {"title": title_var.get().strip() or "Untitled"}
     out = filedialog.asksaveasfilename(
         title="Save Combined PDF As",
         initialfile=safe_filename(meta["title"]) + ".pdf",
@@ -1286,34 +1281,47 @@ def build_combined_pdf():
             temp_root = make_temp_dir_near_output(out)
             writer    = PdfWriter()
             try:
-                total = len(queue_items)
+                video_items = [item for item in queue_items if item.kind == "video"]
+                pdf_items = [item for item in queue_items if item.kind == "pdf"]
+                total = len(video_items) + len(pdf_items)
                 done  = 0
-                for idx, item in enumerate(queue_items, 1):
+                for idx, item in enumerate(video_items, 1):
                     if stop_event.is_set():
                         raise RuntimeError("Stopped")
                     label = f"Item {idx} of {total}"
-                    if item.kind == "pdf":
-                        ui_set_status(f"{label} — Adding PDF: {os.path.basename(item.path)}")
-                        ui_set_progress(done, total)
-                        append_pdf_to_writer(writer, item.path)
-                        done += 1
-                        ui_set_progress(done, total)
-                    else:
-                        ui_set_status(f"{label} — Converting video: {os.path.basename(item.path)}")
-                        tmp = os.path.join(temp_root, f"__video_{idx:03d}.pdf")
-                        def prog(sv, sm, et, st):
-                            ui_set_status(f"{label} — {st}")
-                            ui_set_eta(et)
-                        video_to_temp_pdf(item.path, tmp, preset_name, meta, prog, stop_event=stop_event)
-                        append_pdf_to_writer(writer, tmp)
-                        done += 1
-                        ui_set_progress(done, total)
+                    ui_set_status(f"{label} — Converting video: {os.path.basename(item.path)}")
+                    tmp = os.path.join(temp_root, f"__video_{idx:03d}.pdf")
+                    def prog(sv, sm, et, st):
+                        ui_set_status(f"{label} — {st}")
+                        ui_set_eta(et)
+                    video_to_temp_pdf(item.path, tmp, preset_name, meta, prog, stop_event=stop_event)
+                    append_pdf_to_writer(writer, tmp)
+                    done += 1
+                    ui_set_progress(done, total)
 
                 if extra_images:
                     ui_set_status("Appending standalone images...")
                     img_tmp = os.path.join(temp_root, "__extra_images.pdf")
-                    build_pdf_from_images(extra_images, img_tmp, meta, bar_height=0)
+                    build_pdf_from_images(
+                        extra_images,
+                        img_tmp,
+                        meta,
+                        bar_height=0,
+                        lossless_pages=True,
+                        apply_frame_watermark=False,
+                    )
                     append_pdf_to_writer(writer, img_tmp)
+
+                for pidx, item in enumerate(pdf_items, 1):
+                    if stop_event.is_set():
+                        raise RuntimeError("Stopped")
+                    order_idx = len(video_items) + pidx
+                    label = f"Item {order_idx} of {total}"
+                    ui_set_status(f"{label} — Appending PDF: {os.path.basename(item.path)}")
+                    ui_set_progress(done, total)
+                    append_pdf_to_writer(writer, item.path)
+                    done += 1
+                    ui_set_progress(done, total)
 
                 ui_set_status("Writing final PDF file...")
                 pm = meta_to_pdf_metadata(meta)
@@ -1355,19 +1363,12 @@ def extract_frames_and_select():
         ui_set_status("A build is already running — please wait or stop it first.")
         return
     video_paths = [item.path for item in queue_items if item.kind == "video"]
+    pdf_paths = [item.path for item in queue_items if item.kind == "pdf"]
     if not video_paths:
         messagebox.showwarning("No Videos", "Please add at least one video to the queue first.")
         return
 
-    meta = {
-        "title":       title_var.get().strip() or "Untitled",
-        "author":      author_var.get().strip(),
-        "tags":        tags_var.get().strip(),
-        "type":        type_var.get().strip() or "PDF",
-        "published":   published_var.get().strip(),
-        "language":    language_var.get().strip(),
-        "cover_image": cover_var.get().strip(),
-    }
+    meta = {"title": title_var.get().strip() or "Untitled"}
     preset_name = preset_var.get()
     stop_event.clear()
     ui_set_buttons_running(True)
@@ -1408,7 +1409,8 @@ def extract_frames_and_select():
             ui_set_buttons_running(False)
             ui_call(lambda: FrameSelectionWindow(
                 root, video_collections, temp_dir, meta,
-                extra_image_paths=list(extra_images)
+                extra_image_paths=list(extra_images),
+                queued_pdf_paths=pdf_paths,
             ))
 
         except RuntimeError as e:
@@ -1451,6 +1453,33 @@ THUMBNAIL_MAX_WIDTH  = 95    # Smaller thumbnails help fit denser pages (up to 2
 ZOOM_MAX_WIDTH       = 900
 PAGE_NUMBER_BAR_PTS  = 36
 FRAMES_PER_PAGE_OPTIONS = (6, 8, 12, 16, 20)
+PDF_OPTIMIZATION_PROFILES = {
+    "None (best quality)": {
+        "optimize": False,
+        "max_width": None,
+        "quality": None,
+        "estimate_multiplier": 1.00,
+    },
+    "Balanced (recommended)": {
+        "optimize": True,
+        "max_width": 1600,
+        "quality": 82,
+        "estimate_multiplier": 0.46,
+    },
+    "Strong (smaller file)": {
+        "optimize": True,
+        "max_width": 1400,
+        "quality": 72,
+        "estimate_multiplier": 0.36,
+    },
+    "Maximum (smallest file)": {
+        "optimize": True,
+        "max_width": 1200,
+        "quality": 64,
+        "estimate_multiplier": 0.30,
+    },
+}
+DEFAULT_OPTIMIZATION_PROFILE = "Balanced (recommended)"
 
 
 class FrameSelectionWindow:
@@ -1464,11 +1493,12 @@ class FrameSelectionWindow:
     Column 5: Action buttons (smart select, keep/skip, PDF export, etc.)
     """
 
-    def __init__(self, parent, video_collections, temp_dir, meta, extra_image_paths=None):
+    def __init__(self, parent, video_collections, temp_dir, meta, extra_image_paths=None, queued_pdf_paths=None):
         self.video_collections  = video_collections    # List of (video_name, [frame_paths])
         self.temp_dir           = temp_dir
         self.meta               = meta
         self.extra_image_paths: List[str] = list(extra_image_paths or [])
+        self.queued_pdf_paths: List[str] = list(queued_pdf_paths or [])
 
         # keep[(collection_index, frame_index)] = True/False
         self.keep: Dict[Tuple[int, int], bool] = {}
@@ -1801,13 +1831,22 @@ class FrameSelectionWindow:
 
         _section_header("Export to PDF", "#1565c0")
 
-        self.optimize_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(
-            c5, text="Compress output (smaller file size)", variable=self.optimize_var,
-            bg="#2c3e50", fg="white", selectcolor="#1e2e3e",
-            activebackground="#2c3e50", activeforeground="white",
-            font=("", 8), command=self._update_selection_size_label
-        ).pack(anchor="w", padx=10, pady=2)
+        optimize_row = tk.Frame(c5, bg="#2c3e50")
+        optimize_row.pack(fill="x", padx=10, pady=2)
+        tk.Label(
+            optimize_row, text="Optimization mode:", bg="#2c3e50",
+            fg="#d7dde2", font=("", 8)
+        ).pack(side="left")
+        self.optimize_mode_var = tk.StringVar(value=DEFAULT_OPTIMIZATION_PROFILE)
+        optimize_combo = Combobox(
+            optimize_row,
+            textvariable=self.optimize_mode_var,
+            values=list(PDF_OPTIMIZATION_PROFILES.keys()),
+            state="readonly",
+            width=24,
+        )
+        optimize_combo.pack(side="left", padx=4)
+        optimize_combo.bind("<<ComboboxSelected>>", lambda _e: self._update_selection_size_label())
 
         self.split_var = tk.BooleanVar(value=False)
         tk.Checkbutton(
@@ -1815,6 +1854,12 @@ class FrameSelectionWindow:
             bg="#2c3e50", fg="white", selectcolor="#1e2e3e",
             activebackground="#2c3e50", activeforeground="white", font=("", 8)
         ).pack(anchor="w", padx=10, pady=(2, 0))
+        self.keep_unsplit_when_split_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            c5, text="Keep unsplit version too", variable=self.keep_unsplit_when_split_var,
+            bg="#2c3e50", fg="white", selectcolor="#1e2e3e",
+            activebackground="#2c3e50", activeforeground="white", font=("", 8)
+        ).pack(anchor="w", padx=22, pady=(0, 0))
 
         self.export_pngs_var = tk.BooleanVar(value=False)
         tk.Checkbutton(
@@ -2574,12 +2619,17 @@ class FrameSelectionWindow:
         if not all_paths:
             self.estimated_size_label.config(text="")
             return
-        optimize = self.optimize_var.get()
-        estimate = estimate_pdf_size_bytes(all_paths, optimize=optimize)
-        label    = f"Estimated PDF size: ~{format_bytes(estimate)}"
-        if optimize:
-            label += " (compressed)"
+        profile = self._get_pdf_optimization_profile()
+        baseline = estimate_pdf_size_bytes(all_paths, optimize=False)
+        estimate = int(baseline * float(profile["estimate_multiplier"]))
+        label = f"Estimated PDF size: ~{format_bytes(estimate)}"
+        if profile["optimize"]:
+            label += f" ({self.optimize_mode_var.get()})"
         self.estimated_size_label.config(text=label)
+
+    def _get_pdf_optimization_profile(self) -> Dict[str, object]:
+        selected = self.optimize_mode_var.get()
+        return PDF_OPTIMIZATION_PROFILES.get(selected, PDF_OPTIMIZATION_PROFILES[DEFAULT_OPTIMIZATION_PROFILE])
 
     def _get_selected_paths(self) -> List[str]:
         out = []
@@ -2588,6 +2638,18 @@ class FrameSelectionWindow:
                 if self.keep.get((ci, fi), False):
                     out.append(paths[fi])
         return out
+
+    def _get_selected_paths_with_video_titles(self) -> Tuple[List[str], List[Optional[str]]]:
+        """Return selected frame paths and aligned source video titles."""
+        paths_out: List[str] = []
+        titles_out: List[Optional[str]] = []
+        for ci, (video_name, paths) in enumerate(self.video_collections):
+            source_title = os.path.splitext(video_name)[0]
+            for fi in range(len(paths)):
+                if self.keep.get((ci, fi), False):
+                    paths_out.append(paths[fi])
+                    titles_out.append(source_title)
+        return paths_out, titles_out
 
     # ─── Pagination ───────────────────────────────────────────────
     def _sync_checkboxes_to_keep(self):
@@ -2712,23 +2774,30 @@ class FrameSelectionWindow:
             messagebox.showinfo("Nothing Selected",
                                 "Please select at least one frame first.")
             return
-        normal_size    = estimate_pdf_size_bytes(all_paths, optimize=False)
-        optimized_size = estimate_pdf_size_bytes(all_paths, optimize=True)
+        normal_size = estimate_pdf_size_bytes(all_paths, optimize=False)
+        profile_lines = []
+        for profile_name, profile in PDF_OPTIMIZATION_PROFILES.items():
+            est = int(normal_size * float(profile["estimate_multiplier"]))
+            profile_lines.append(f"  {profile_name}: approximately {format_bytes(est)}")
+        selected_profile = self.optimize_mode_var.get()
         messagebox.showinfo(
             "PDF Size Estimate",
             f"Video frames selected:  {len(selected)}\n"
             f"Extra images added:     {len(self.extra_image_paths)}\n"
             f"Total pages in PDF:     {len(all_paths)}\n\n"
-            f"Normal quality:    approximately {format_bytes(normal_size)}\n"
-            f"Compressed quality: approximately {format_bytes(optimized_size)}\n\n"
+            f"Current selection: {selected_profile}\n\n"
+            f"Estimated size by optimization mode:\n"
+            + "\n".join(profile_lines)
+            + "\n\n"
             f"Note: These are estimates. Actual file size may vary."
         )
 
     # ─── Create PDF ───────────────────────────────────────────────
     def _create_pdf(self):
         self._sync_checkboxes_to_keep()
-        selected     = self._get_selected_paths()
-        all_images   = selected + self.extra_image_paths
+        selected, selected_video_titles = self._get_selected_paths_with_video_titles()
+        all_images = selected + self.extra_image_paths
+        all_image_source_titles = selected_video_titles + [None] * len(self.extra_image_paths)
         if not all_images:
             messagebox.showerror(
                 "Nothing Selected",
@@ -2759,6 +2828,7 @@ class FrameSelectionWindow:
                 return
 
         split_enabled = self.split_var.get()
+        keep_unsplit_when_split = split_enabled and self.keep_unsplit_when_split_var.get()
         export_pngs = self.export_pngs_var.get()
         target_size_mb = 10.0
         if split_enabled:
@@ -2796,64 +2866,133 @@ class FrameSelectionWindow:
         def run():
             global last_output_pdf
             try:
+                optimize_profile = self._get_pdf_optimization_profile()
                 if split_enabled:
                     output_dir = os.path.dirname(output_path)
                     output_name = os.path.splitext(os.path.basename(output_path))[0]
                     split_dir_base = os.path.join(output_dir, f"{output_name}_split")
                     split_dir = make_unique_output_dir(split_dir_base)
                     os.makedirs(split_dir, exist_ok=True)
-                    split_output_path = os.path.join(split_dir, os.path.basename(output_path))
-                    outputs = build_split_pdfs(
-                        all_images, split_output_path, self.meta,
-                        target_size_mb=target_size_mb,
+                    combined_pdf_path = os.path.join(self.temp_dir, "__combined_before_split.pdf")
+                    build_pdf_from_images(
+                        all_images, combined_pdf_path, self.meta,
                         bar_height=PAGE_NUMBER_BAR_PTS,
-                        optimize=self.optimize_var.get(),
+                        optimize=bool(optimize_profile["optimize"]),
+                        optimize_max_width=optimize_profile["max_width"],
+                        optimize_quality=optimize_profile["quality"],
+                        total_pages=len(all_images),
                         progress_callback=on_progress,
                         columns=self.columns_var.get(),
                         per_row=self.per_row_var.get(),
+                        image_source_titles=all_image_source_titles,
                     )
-                    last_output_pdf = outputs[0] if outputs else split_output_path
+
+                    if self.queued_pdf_paths:
+                        ensure_pdf_merge_available()
+                        merged_path = os.path.join(self.temp_dir, "__combined_with_pdfs.pdf")
+                        writer = PdfWriter()
+                        append_pdf_to_writer(writer, combined_pdf_path)
+                        for pdf_path in self.queued_pdf_paths:
+                            append_pdf_to_writer(writer, pdf_path)
+                        pm = meta_to_pdf_metadata(self.meta)
+                        if pm:
+                            writer.add_metadata(pm)
+                        with open(merged_path, "wb") as f:
+                            writer.write(f)
+                        combined_pdf_path = merged_path
+
+                    split_output_path = os.path.join(split_dir, os.path.basename(output_path))
+                    outputs = split_existing_pdf_by_size(
+                        combined_pdf_path,
+                        split_output_path,
+                        target_size_mb=target_size_mb,
+                        metadata=meta_to_pdf_metadata(self.meta),
+                    )
+                    outputs = [path for path in outputs if os.path.exists(path)]
+                    if not outputs:
+                        final_single = split_output_path
+                        shutil.copy2(combined_pdf_path, final_single)
+                        outputs = [final_single]
+
+                    if keep_unsplit_when_split and len(outputs) > 1:
+                        unsplit_path = os.path.join(split_dir, f"{output_name}_unsplit.pdf")
+                        shutil.copy2(combined_pdf_path, unsplit_path)
+                    last_output_pdf = outputs[0]
+                    extra_msg = " + unsplit copy" if keep_unsplit_when_split and len(outputs) > 1 else ""
                     done_msg = (
                         f"Created {len(outputs)} split PDF file(s) in:\n"
                         f"{os.path.basename(split_dir)}\n\n"
                         f"Total: {len(selected)} frames + {len(self.extra_image_paths)} extra images"
+                        f"{extra_msg}"
                     )
                 else:
                     build_pdf_from_images(
                         all_images, output_path, self.meta,
                         bar_height=PAGE_NUMBER_BAR_PTS,
-                        optimize=self.optimize_var.get(),
+                        optimize=bool(optimize_profile["optimize"]),
+                        optimize_max_width=optimize_profile["max_width"],
+                        optimize_quality=optimize_profile["quality"],
                         total_pages=len(all_images),
                         progress_callback=on_progress,
                         columns=self.columns_var.get(),
                         per_row=self.per_row_var.get(),
+                        image_source_titles=all_image_source_titles,
                     )
+                    if self.queued_pdf_paths:
+                        ensure_pdf_merge_available()
+                        merged_path = os.path.join(
+                            os.path.dirname(output_path),
+                            "__merged_with_queued_pdfs.pdf",
+                        )
+                        writer = PdfWriter()
+                        append_pdf_to_writer(writer, output_path)
+                        for pdf_path in self.queued_pdf_paths:
+                            append_pdf_to_writer(writer, pdf_path)
+                        pm = meta_to_pdf_metadata(self.meta)
+                        if pm:
+                            writer.add_metadata(pm)
+                        with open(merged_path, "wb") as f:
+                            writer.write(f)
+                        os.replace(merged_path, output_path)
                     last_output_pdf = output_path
                     done_msg = (
                         f"PDF saved as:\n{os.path.basename(output_path)}\n\n"
                         f"Contains {len(selected)} frames + {len(self.extra_image_paths)} extra images"
                     )
 
-                if export_pngs and selected:
+                if export_pngs and all_images:
                     pdf_base = os.path.splitext(os.path.basename(output_path))[0]
                     png_dir_base = os.path.join(
                         os.path.dirname(output_path),
-                        f"{pdf_base}_selected_frames_png"
+                        f"{pdf_base}_exported_pages_png"
                     )
                     png_dir = make_unique_output_dir(png_dir_base)
+                    export_images = list(all_images)
+                    export_source_titles = selected_video_titles + [None] * len(self.extra_image_paths)
+                    if self.queued_pdf_paths:
+                        for pdf_idx, pdf_path in enumerate(self.queued_pdf_paths, 1):
+                            pdf_dir = os.path.join(self.temp_dir, f"_export_pdf_pages_{pdf_idx:03d}")
+                            converted = rasterize_pdf_to_images(
+                                pdf_path,
+                                pdf_dir,
+                                dpi=220,
+                            )
+                            export_images.extend(converted)
+                            export_source_titles.extend([None] * len(converted))
                     export_images_as_png(
-                        selected,
+                        export_images,
                         png_dir,
                         progress_callback=on_progress,
                         bar_height=PAGE_NUMBER_BAR_PTS,
                         start_page_number=1,
-                        total_pages=len(selected),
+                        total_pages=len(export_images),
                         columns=self.columns_var.get(),
                         per_row=self.per_row_var.get(),
                         lossless_optimize=self.lossless_png_optimize_var.get(),
+                        image_source_titles=export_source_titles,
                     )
                     done_msg += (
-                        f"\n\nSelected frames were also exported as PNG files in:\n"
+                        f"\n\nAll output pages (frames/images/PDF pages) were also exported as PNG files in:\n"
                         f"{os.path.basename(png_dir)}"
                     )
 
@@ -2892,19 +3031,13 @@ root.minsize(900, 700)
 # ─── Document metadata ────────────────────────────────────────────
 mf = tk.LabelFrame(
     root,
-    text="Document Information (optional — will be embedded in the PDF)",
+    text="Document Title (embedded in PDF metadata)",
     font=("", 9, "bold"), padx=8, pady=6
 )
 mf.pack(fill="x", padx=12, pady=(10, 4))
 
 field_definitions = [
     ("Title",              "title_var",     "",    None),
-    ("Author",             "author_var",    "",    None),
-    ("Keywords / Tags",    "tags_var",      "",    None),
-    ("Document Type",      "type_var",      "PDF", None),
-    ("Publication Date",   "published_var", "",    "e.g. 2026-02-08"),
-    ("Language",           "language_var",  "",    None),
-    ("Cover Image Path",   "cover_var",     "",    None),
 ]
 
 vars_dict = {}
@@ -2917,12 +3050,6 @@ for row_idx, (label, var_name, default, hint) in enumerate(field_definitions):
         tk.Label(mf, text=hint, fg="gray", font=("", 8)).grid(row=row_idx, column=2, sticky="w")
 
 title_var     = vars_dict["title_var"]
-author_var    = vars_dict["author_var"]
-tags_var      = vars_dict["tags_var"]
-type_var      = vars_dict["type_var"]
-published_var = vars_dict["published_var"]
-language_var  = vars_dict["language_var"]
-cover_var     = vars_dict["cover_var"]
 
 row_idx += 1
 tk.Label(mf, text="Frame Capture Interval:").grid(row=row_idx, column=0, sticky="w", pady=2)

@@ -2,6 +2,8 @@
 
 import os
 import tempfile
+from io import BytesIO
+import logging
 from typing import List, Optional
 
 import cv2
@@ -18,6 +20,18 @@ except Exception:
     PdfReader = None
     PdfWriter = None
 
+for _logger_name in ("pypdf", "PyPDF2"):
+    logging.getLogger(_logger_name).setLevel(logging.ERROR)
+
+try:
+    import fitz  # PyMuPDF
+except Exception:
+    fitz = None
+
+MERGE_SEPARATOR_PX = 3
+FRAME_WATERMARK_ALPHA = 0.34
+FRAME_WATERMARK_COLOR = (140, 140, 140)
+
 
 def _normalize_bgr(images: List[np.ndarray]) -> List[np.ndarray]:
     """Convert a list of images to BGR, handling grayscale and BGRA."""
@@ -29,6 +43,132 @@ def _normalize_bgr(images: List[np.ndarray]) -> List[np.ndarray]:
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
         out.append(img)
     return out
+
+
+def add_frame_number_watermark(image: np.ndarray, frame_num: int) -> np.ndarray:
+    """Overlay a subtle bottom-right frame number watermark on an image."""
+    if image.ndim == 2:
+        base = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    elif image.shape[2] == 4:
+        base = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+    else:
+        base = image.copy()
+
+    h, w = base.shape[:2]
+    min_side = max(1, min(h, w))
+    margin = max(10, int(min_side * 0.04))
+    font_scale = max(1.0, min_side / 650.0)
+    thickness = max(2, int(min_side * 0.004))
+    text = str(frame_num)
+
+    (text_w, text_h), _ = cv2.getTextSize(
+        text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+    )
+    if text_w > int(w * 0.35) and text_w > 0:
+        font_scale *= (w * 0.35) / text_w
+        (text_w, text_h), _ = cv2.getTextSize(
+            text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+        )
+
+    x = max(margin, w - text_w - margin)
+    y = max(text_h + margin, h - margin)
+
+    overlay = base.copy()
+    cv2.putText(
+        overlay,
+        text,
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        font_scale,
+        FRAME_WATERMARK_COLOR,
+        thickness,
+        cv2.LINE_AA,
+    )
+    return cv2.addWeighted(overlay, FRAME_WATERMARK_ALPHA, base, 1.0 - FRAME_WATERMARK_ALPHA, 0)
+
+
+def _truncate_footer_text(text: str, max_width: int, font_scale: float, thickness: int) -> str:
+    """Trim footer text with ellipsis so it fits available width."""
+    if not text or max_width <= 0:
+        return ""
+    if cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0][0] <= max_width:
+        return text
+    ellipsis = "..."
+    candidate = text
+    while candidate:
+        candidate = candidate[:-1]
+        trial = candidate.rstrip() + ellipsis
+        if cv2.getTextSize(trial, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0][0] <= max_width:
+            return trial
+    return ""
+
+
+def _group_images_for_pages(
+    image_paths: List[str],
+    columns: int,
+    image_source_titles: Optional[List[Optional[str]]] = None,
+):
+    """Group ordered images into page groups without crossing source transitions."""
+    if image_source_titles is None:
+        source_titles: List[Optional[str]] = [None] * len(image_paths)
+    else:
+        if len(image_source_titles) != len(image_paths):
+            raise ValueError("image_source_titles must match image_paths length")
+        source_titles = [s.strip() if isinstance(s, str) and s.strip() else None for s in image_source_titles]
+
+    groups = []
+    current_paths: List[str] = []
+    current_titles: List[Optional[str]] = []
+    current_indices: List[int] = []
+    current_source: Optional[str] = None
+
+    for idx, (path, source_title) in enumerate(zip(image_paths, source_titles)):
+        if current_paths and (len(current_paths) >= columns or source_title != current_source):
+            groups.append((current_paths, current_titles, current_indices))
+            current_paths, current_titles, current_indices = [], [], []
+
+        if not current_paths:
+            current_source = source_title
+
+        current_paths.append(path)
+        current_titles.append(source_title)
+        current_indices.append(idx)
+
+    if current_paths:
+        groups.append((current_paths, current_titles, current_indices))
+    return groups
+
+
+def rasterize_pdf_to_images(
+    pdf_path: str,
+    output_dir: str,
+    dpi: int = 220,
+    progress_callback=None,
+    stop_event=None,
+) -> List[str]:
+    """Render each PDF page to a lossless PNG image."""
+    if fitz is None:
+        raise RuntimeError(
+            "PDF page-to-image conversion requires PyMuPDF.\n"
+            "Install it by running: pip install pymupdf"
+        )
+    os.makedirs(output_dir, exist_ok=True)
+    zoom = max(0.5, float(dpi) / 72.0)
+    matrix = fitz.Matrix(zoom, zoom)
+
+    output_paths: List[str] = []
+    with fitz.open(pdf_path) as doc:
+        total = len(doc)
+        for i, page in enumerate(doc):
+            if stop_event is not None and stop_event.is_set():
+                raise RuntimeError("Stopped")
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
+            out_path = os.path.join(output_dir, f"page_{i + 1:05d}.png")
+            pix.save(out_path)
+            output_paths.append(out_path)
+            if progress_callback:
+                progress_callback(i + 1, total, f"Rasterizing PDF page {i + 1} of {total}")
+    return output_paths
 
 
 def stitch_images_row(images: List[np.ndarray]) -> np.ndarray:
@@ -50,7 +190,13 @@ def stitch_images_row(images: List[np.ndarray]) -> np.ndarray:
             img = cv2.resize(img, (new_w, target_h), interpolation=cv2.INTER_AREA)
         resized.append(img)
 
-    return np.hstack(resized)
+    separator = np.zeros((target_h, MERGE_SEPARATOR_PX, 3), dtype=np.uint8)
+    stitched_parts: List[np.ndarray] = []
+    for idx, img in enumerate(resized):
+        if idx:
+            stitched_parts.append(separator)
+        stitched_parts.append(img)
+    return np.hstack(stitched_parts)
 
 
 def stitch_images_grid(images: List[np.ndarray], per_row: int) -> np.ndarray:
@@ -77,7 +223,13 @@ def stitch_images_grid(images: List[np.ndarray], per_row: int) -> np.ndarray:
             row = np.hstack([row, pad])
         padded.append(row)
 
-    return np.vstack(padded)
+    separator = np.zeros((MERGE_SEPARATOR_PX, target_w, 3), dtype=np.uint8)
+    stacked_parts: List[np.ndarray] = []
+    for idx, row in enumerate(padded):
+        if idx:
+            stacked_parts.append(separator)
+        stacked_parts.append(row)
+    return np.vstack(stacked_parts)
 
 
 def add_page_number_bar(
@@ -86,6 +238,7 @@ def add_page_number_bar(
     bar_height: int,
     total_pages: Optional[int] = None,
     footer_label: Optional[str] = None,
+    right_label: Optional[str] = None,
 ) -> np.ndarray:
     """Append a black footer bar and page number text to an image.
 
@@ -116,16 +269,37 @@ def add_page_number_bar(
         label = f"Page {page_num}/{total_pages}"
     else:
         label = f"Page {page_num}"
+    left_font_scale = 0.6
+    left_thickness = 2
+    baseline_y = h + int(bar_height * 0.75)
     cv2.putText(
         page_canvas,
         label,
-        (12, h + int(bar_height * 0.75)),
+        (12, baseline_y),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
+        left_font_scale,
         (255, 255, 255),
-        2,
+        left_thickness,
         cv2.LINE_AA,
     )
+    if right_label:
+        right_font_scale = 0.55
+        right_thickness = 1
+        left_w = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, left_font_scale, left_thickness)[0][0]
+        available = max(10, w - 36 - left_w)
+        fitted = _truncate_footer_text(right_label, available, right_font_scale, right_thickness)
+        if fitted:
+            right_w = cv2.getTextSize(fitted, cv2.FONT_HERSHEY_SIMPLEX, right_font_scale, right_thickness)[0][0]
+            cv2.putText(
+                page_canvas,
+                fitted,
+                (w - right_w - 12, baseline_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                right_font_scale,
+                (210, 210, 210),
+                right_thickness,
+                cv2.LINE_AA,
+            )
     return page_canvas
 
 
@@ -139,6 +313,7 @@ def export_images_as_png(
     columns: int = 1,
     per_row: int = 0,
     lossless_optimize: bool = False,
+    image_source_titles: Optional[List[Optional[str]]] = None,
 ) -> str:
     """Export selected images as numbered PNG files with optional footer bar.
 
@@ -162,24 +337,25 @@ def export_images_as_png(
     os.makedirs(output_dir, exist_ok=True)
 
     total_images = len(image_paths)
-    groups = [image_paths[i:i + columns] for i in range(0, total_images, columns)]
+    groups = _group_images_for_pages(image_paths, columns, image_source_titles=image_source_titles)
     num_groups = len(groups)
     if total_pages is None:
         total_pages = max(0, start_page_number - 1) + total_images
 
-    for i, group in enumerate(groups):
+    for i, (group_paths, group_titles, group_indices) in enumerate(groups):
         if progress_callback:
             progress_callback(i, num_groups, f"Exporting PNG {i + 1} of {num_groups}")
 
         frames = []
-        for img_path in group:
+        for img_idx, img_path in enumerate(group_paths):
             frame = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
             if frame is None:
                 raise RuntimeError(f"Could not read image for PNG export: {os.path.basename(img_path)}")
-            frames.append(frame)
+            frame_num = start_page_number + group_indices[img_idx]
+            frames.append(add_frame_number_watermark(frame, frame_num))
 
-        first_img = start_page_number + i * columns
-        last_img = first_img + len(group) - 1
+        first_img = start_page_number + group_indices[0]
+        last_img = start_page_number + group_indices[-1]
 
         if columns > 1:
             footer = f"Photos {first_img}-{last_img} / {total_pages}"
@@ -197,6 +373,7 @@ def export_images_as_png(
             page_num=first_img,
             bar_height=bar_height,
             footer_label=footer,
+            right_label=group_titles[0] if group_titles and group_titles[0] else None,
         )
         if columns > 1:
             out_path = os.path.join(output_dir, f"Photos {first_img}-{last_img}.png")
@@ -220,6 +397,14 @@ def ensure_pdf_merge_available():
         raise RuntimeError("Missing required library: pypdf.\nInstall it by running:  pip install pypdf")
 
 
+def _safe_pdf_reader(pdf_path: str):
+    """Open a PDF in tolerant mode to handle minor structural issues."""
+    try:
+        return PdfReader(pdf_path, strict=False)
+    except TypeError:
+        return PdfReader(pdf_path)
+
+
 def append_pdf_to_writer(writer, pdf_path):
     """Append all pages from one PDF file into an existing writer.
 
@@ -230,7 +415,7 @@ def append_pdf_to_writer(writer, pdf_path):
     Returns:
         None: Mutates `writer` by adding pages.
     """
-    reader = PdfReader(pdf_path)
+    reader = _safe_pdf_reader(pdf_path)
     for page in reader.pages:
         writer.add_page(page)
 
@@ -278,7 +463,7 @@ def add_metadata_to_pdf(pdf_path, meta):
     if not pm:
         return
     ensure_pdf_merge_available()
-    reader = PdfReader(pdf_path)
+    reader = _safe_pdf_reader(pdf_path)
     writer = PdfWriter()
     for page in reader.pages:
         writer.add_page(page)
@@ -319,6 +504,11 @@ def build_pdf_from_images(
     total_pages: Optional[int] = None,
     columns: int = 1,
     per_row: int = 0,
+    image_source_titles: Optional[List[Optional[str]]] = None,
+    lossless_pages: bool = False,
+    apply_frame_watermark: bool = True,
+    optimize_max_width: Optional[int] = None,
+    optimize_quality: Optional[int] = None,
 ):
     """Build a PDF from ordered images and optional page footer numbering.
 
@@ -343,8 +533,10 @@ def build_pdf_from_images(
 
     columns = max(1, int(columns))
     per_row = max(1, int(per_row)) if per_row else columns
+    effective_max_width = int(optimize_max_width or OPTIMIZE_MAX_WIDTH)
+    effective_quality = int(optimize_quality or OPTIMIZE_QUALITY)
     total_images = len(image_paths)
-    groups = [image_paths[i:i + columns] for i in range(0, total_images, columns)]
+    groups = _group_images_for_pages(image_paths, columns, image_source_titles=image_source_titles)
 
     c = canvas.Canvas(output_pdf)
     c.setTitle(meta.get("title", ""))
@@ -358,7 +550,7 @@ def build_pdf_from_images(
     tmp_dir = tempfile.mkdtemp(prefix="video_to_pdf_opt_")
     try:
         full_total = progress_total or num_groups
-        for gi, group in enumerate(groups):
+        for gi, (group_paths, group_titles, group_indices) in enumerate(groups):
             if progress_callback:
                 progress_callback(
                     progress_offset + gi + 1, full_total,
@@ -366,23 +558,31 @@ def build_pdf_from_images(
                 )
 
             cv_frames = []
-            for img_path in group:
+            for img_idx, img_path in enumerate(group_paths):
                 if optimize and os.path.exists(img_path):
                     frame = cv2.imread(img_path)
                     if frame is not None:
                         fh, fw = frame.shape[:2]
-                        if fw > OPTIMIZE_MAX_WIDTH:
+                        if fw > effective_max_width:
                             frame = cv2.resize(
                                 frame,
-                                (OPTIMIZE_MAX_WIDTH, int(fh * OPTIMIZE_MAX_WIDTH / fw)),
+                                (effective_max_width, int(fh * effective_max_width / fw)),
                                 interpolation=cv2.INTER_AREA,
                             )
+                        frame_num = start_page_number + group_indices[img_idx]
+                        if apply_frame_watermark:
+                            frame = add_frame_number_watermark(frame, frame_num)
                         cv_frames.append(frame)
                         continue
-                cv_frames.append(cv2.imread(img_path, cv2.IMREAD_UNCHANGED))
+                frame = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
+                if frame is not None:
+                    frame_num = start_page_number + group_indices[img_idx]
+                    if apply_frame_watermark:
+                        frame = add_frame_number_watermark(frame, frame_num)
+                cv_frames.append(frame)
 
             if any(f is None for f in cv_frames):
-                bad = [os.path.basename(p) for p, f in zip(group, cv_frames) if f is None]
+                bad = [os.path.basename(p) for p, f in zip(group_paths, cv_frames) if f is None]
                 raise RuntimeError(f"Could not read image(s): {', '.join(bad)}")
 
             if len(cv_frames) > 1:
@@ -394,11 +594,15 @@ def build_pdf_from_images(
             elif composite.shape[2] == 4:
                 composite = cv2.cvtColor(composite, cv2.COLOR_BGRA2BGR)
 
-            tmp_path = os.path.join(tmp_dir, f"page_{gi:06d}.jpg")
-            cv2.imwrite(tmp_path, composite, [cv2.IMWRITE_JPEG_QUALITY, OPTIMIZE_QUALITY if optimize else 95])
+            ext = "png" if lossless_pages else "jpg"
+            tmp_path = os.path.join(tmp_dir, f"page_{gi:06d}.{ext}")
+            if lossless_pages:
+                cv2.imwrite(tmp_path, composite, [cv2.IMWRITE_PNG_COMPRESSION, 9])
+            else:
+                cv2.imwrite(tmp_path, composite, [cv2.IMWRITE_JPEG_QUALITY, effective_quality if optimize else 95])
 
-            first_img = start_page_number + gi * columns
-            last_img = first_img + len(group) - 1
+            first_img = start_page_number + group_indices[0]
+            last_img = start_page_number + group_indices[-1]
 
             if columns > 1:
                 footer_text = f"Photos {first_img}-{last_img} / {total_pages}"
@@ -416,6 +620,17 @@ def build_pdf_from_images(
             c.setFillColorRGB(1, 1, 1)
             c.setFont("Helvetica", 14)
             c.drawString(12, bar_height * 0.25, footer_text)
+            source_title = group_titles[0] if group_titles and group_titles[0] else ""
+            if source_title:
+                max_label_width = max(20, w - 190)
+                fitted = source_title
+                while c.stringWidth(fitted, "Helvetica", 12) > max_label_width and len(fitted) > 1:
+                    fitted = fitted[:-1]
+                if fitted != source_title and len(fitted) > 1:
+                    fitted = fitted[:-1] + "..."
+                c.setFillColorRGB(0.82, 0.82, 0.82)
+                c.setFont("Helvetica", 12)
+                c.drawRightString(w - 12, bar_height * 0.25, fitted)
             c.showPage()
     finally:
         cleanup_dir(tmp_dir)
@@ -475,7 +690,10 @@ def split_images_by_size(image_paths, target_size_mb, optimize=False):
 
 def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=36,
                      optimize=False, progress_callback=None, columns: int = 1,
-                     per_row: int = 0):
+                     per_row: int = 0,
+                     image_source_titles: Optional[List[Optional[str]]] = None,
+                     optimize_max_width: Optional[int] = None,
+                     optimize_quality: Optional[int] = None):
     """Export one or more PDF parts constrained by target size.
 
     Args:
@@ -493,6 +711,8 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
         list[str]: Output PDF paths (single item if no split needed).
     """
     total_pages = len(image_paths)
+    if image_source_titles is not None and len(image_source_titles) != total_pages:
+        raise ValueError("image_source_titles must match image_paths length")
     batches = split_images_by_size(image_paths, target_size_mb, optimize=optimize)
     if len(batches) <= 1:
         build_pdf_from_images(
@@ -505,6 +725,9 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
             total_pages=total_pages,
             columns=columns,
             per_row=per_row,
+            image_source_titles=image_source_titles,
+            optimize_max_width=optimize_max_width,
+            optimize_quality=optimize_quality,
         )
         return [output_pdf]
 
@@ -512,6 +735,11 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
     outputs: List[str] = []
     offset = 0
     for idx, batch in enumerate(batches, 1):
+        batch_titles = (
+            image_source_titles[offset:offset + len(batch)]
+            if image_source_titles is not None
+            else None
+        )
         first_photo = offset + 1
         last_photo = offset + len(batch)
         part_out = f"{base}_photos_{first_photo}-{last_photo}{ext}"
@@ -531,8 +759,71 @@ def build_split_pdfs(image_paths, output_pdf, meta, target_size_mb, bar_height=3
             progress_callback=progress_callback,
             columns=columns,
             per_row=per_row,
+            image_source_titles=batch_titles,
+            optimize_max_width=optimize_max_width,
+            optimize_quality=optimize_quality,
         )
         offset += len(batch)
         outputs.append(part_out)
+    return outputs
+
+
+def split_existing_pdf_by_size(
+    pdf_path: str,
+    output_pdf: str,
+    target_size_mb: float,
+    metadata: Optional[dict] = None,
+) -> List[str]:
+    """Split an existing PDF into parts that respect a target size.
+
+    Splitting is page-based and preserves page order. Size checks use actual
+    serialized PDF bytes in-memory for accurate part boundaries.
+    """
+    ensure_pdf_merge_available()
+    target_bytes = max(1, int(float(target_size_mb) * 1024 * 1024))
+    reader = _safe_pdf_reader(pdf_path)
+    total_pages = len(reader.pages)
+    if total_pages == 0:
+        return [output_pdf]
+
+    pages_per_part: List[List[int]] = []
+    current: List[int] = []
+
+    def part_size_bytes(page_indexes: List[int]) -> int:
+        writer = PdfWriter()
+        for pi in page_indexes:
+            writer.add_page(reader.pages[pi])
+        if metadata:
+            writer.add_metadata(metadata)
+        buff = BytesIO()
+        writer.write(buff)
+        return buff.tell()
+
+    for page_index in range(total_pages):
+        trial = current + [page_index]
+        trial_size = part_size_bytes(trial)
+        if current and trial_size > target_bytes:
+            pages_per_part.append(current)
+            current = [page_index]
+        else:
+            current = trial
+    if current:
+        pages_per_part.append(current)
+
+    if len(pages_per_part) <= 1:
+        return [output_pdf]
+
+    base, ext = os.path.splitext(output_pdf)
+    outputs: List[str] = []
+    for idx, page_indexes in enumerate(pages_per_part, 1):
+        out_path = f"{base}_part_{idx:03d}{ext}"
+        writer = PdfWriter()
+        for pi in page_indexes:
+            writer.add_page(reader.pages[pi])
+        if metadata:
+            writer.add_metadata(metadata)
+        with open(out_path, "wb") as f:
+            writer.write(f)
+        outputs.append(out_path)
     return outputs
 
