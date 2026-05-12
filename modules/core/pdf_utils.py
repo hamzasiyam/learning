@@ -548,6 +548,7 @@ def build_pdf_from_images(
         total_pages = total_images
 
     tmp_dir = tempfile.mkdtemp(prefix="video_to_pdf_opt_")
+    page_specs = []
     try:
         full_total = progress_total or num_groups
         for gi, (group_paths, group_titles, group_indices) in enumerate(groups):
@@ -611,27 +612,52 @@ def build_pdf_from_images(
             else:
                 footer_text = f"Page {first_img}"
 
+            source_title = group_titles[0] if group_titles and group_titles[0] else ""
             img = ImageReader(tmp_path)
             w, h = img.getSize()
-            c.setPageSize((w, h + bar_height))
-            c.drawImage(img, 0, bar_height, width=w, height=h)
-            c.setFillColor(black)
-            c.rect(0, 0, w, bar_height, fill=1, stroke=0)
-            c.setFillColorRGB(1, 1, 1)
-            c.setFont("Helvetica", 14)
-            c.drawString(12, bar_height * 0.25, footer_text)
-            source_title = group_titles[0] if group_titles and group_titles[0] else ""
-            if source_title:
-                max_label_width = max(20, w - 190)
-                fitted = source_title
-                while c.stringWidth(fitted, "Helvetica", 12) > max_label_width and len(fitted) > 1:
-                    fitted = fitted[:-1]
-                if fitted != source_title and len(fitted) > 1:
-                    fitted = fitted[:-1] + "..."
-                c.setFillColorRGB(0.82, 0.82, 0.82)
-                c.setFont("Helvetica", 12)
-                c.drawRightString(w - 12, bar_height * 0.25, fitted)
-            c.showPage()
+            page_specs.append(
+                {
+                    "tmp_path": tmp_path,
+                    "w": w,
+                    "h": h,
+                    "footer_text": footer_text,
+                    "source_title": source_title,
+                }
+            )
+
+        if page_specs:
+            page_w = max(spec["w"] for spec in page_specs)
+            image_area_h = max(spec["h"] for spec in page_specs)
+            # Keep a stable portrait layout for all pages in this PDF, including leftovers.
+            image_area_h = max(image_area_h, page_w + 1)
+            page_h = image_area_h + bar_height
+
+            for spec in page_specs:
+                img = ImageReader(spec["tmp_path"])
+                w = spec["w"]
+                h = spec["h"]
+                footer_text = spec["footer_text"]
+                source_title = spec["source_title"]
+                c.setPageSize((page_w, page_h))
+                draw_x = 0
+                draw_y = bar_height + (image_area_h - h)
+                c.drawImage(img, draw_x, draw_y, width=w, height=h)
+                c.setFillColor(black)
+                c.rect(0, 0, page_w, bar_height, fill=1, stroke=0)
+                c.setFillColorRGB(1, 1, 1)
+                c.setFont("Helvetica", 14)
+                c.drawString(12, bar_height * 0.25, footer_text)
+                if source_title:
+                    max_label_width = max(20, page_w - 190)
+                    fitted = source_title
+                    while c.stringWidth(fitted, "Helvetica", 12) > max_label_width and len(fitted) > 1:
+                        fitted = fitted[:-1]
+                    if fitted != source_title and len(fitted) > 1:
+                        fitted = fitted[:-1] + "..."
+                    c.setFillColorRGB(0.82, 0.82, 0.82)
+                    c.setFont("Helvetica", 12)
+                    c.drawRightString(page_w - 12, bar_height * 0.25, fitted)
+                c.showPage()
     finally:
         cleanup_dir(tmp_dir)
     c.save()
