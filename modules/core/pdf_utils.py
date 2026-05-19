@@ -29,8 +29,9 @@ except Exception:
     fitz = None
 
 MERGE_SEPARATOR_PX = 3
-FRAME_WATERMARK_ALPHA = 0.34
-FRAME_WATERMARK_COLOR = (140, 140, 140)
+FRAME_WATERMARK_ALPHA = 0.88
+FRAME_WATERMARK_COLOR = (255, 255, 255)
+FRAME_WATERMARK_STROKE_COLOR = (0, 0, 0)
 
 
 def _normalize_bgr(images: List[np.ndarray]) -> List[np.ndarray]:
@@ -56,9 +57,10 @@ def add_frame_number_watermark(image: np.ndarray, frame_num: int) -> np.ndarray:
 
     h, w = base.shape[:2]
     min_side = max(1, min(h, w))
-    margin = max(10, int(min_side * 0.04))
-    font_scale = max(1.0, min_side / 650.0)
-    thickness = max(2, int(min_side * 0.004))
+    margin = max(14, int(min_side * 0.055))
+    # Roughly 2x larger than prior sizing for print readability.
+    font_scale = max(2.0, min_side / 320.0)
+    thickness = max(4, int(min_side * 0.008))
     text = str(frame_num)
 
     (text_w, text_h), _ = cv2.getTextSize(
@@ -74,6 +76,17 @@ def add_frame_number_watermark(image: np.ndarray, frame_num: int) -> np.ndarray:
     y = max(text_h + margin, h - margin)
 
     overlay = base.copy()
+    stroke_thickness = max(2, thickness + 2)
+    cv2.putText(
+        overlay,
+        text,
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        font_scale,
+        FRAME_WATERMARK_STROKE_COLOR,
+        stroke_thickness,
+        cv2.LINE_AA,
+    )
     cv2.putText(
         overlay,
         text,
@@ -232,6 +245,156 @@ def stitch_images_grid(images: List[np.ndarray], per_row: int) -> np.ndarray:
     return np.vstack(stacked_parts)
 
 
+def _wrap_text_lines(
+    text: str,
+    max_width_px: int,
+    font_scale: float,
+    thickness: int,
+) -> List[str]:
+    """Wrap plain text by rendered width so drawn text never overflows."""
+    text = " ".join((text or "").split())
+    if not text:
+        return []
+    words = text.split()
+    lines: List[str] = []
+    current = ""
+    for word in words:
+        trial = f"{current} {word}".strip()
+        trial_w = cv2.getTextSize(
+            trial, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+        )[0][0]
+        if trial_w <= max_width_px or not current:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
+def render_subtitle_panel(
+    subtitle_text: str,
+    target_height: int,
+    panel_width: Optional[int] = None,
+) -> np.ndarray:
+    """Render subtitle text as a light panel image for side-by-side layout."""
+    target_height = max(120, int(target_height))
+    panel_width = max(300, int(panel_width or 420))
+
+    padding = 22
+    header_h = 42
+    # Intentionally large for print readability.
+    font_scale = 1.45
+    thickness = 2
+    line_gap = 12
+    text_left = padding
+    text_right = panel_width - padding
+    max_text_w = max(80, text_right - text_left)
+    lines = _wrap_text_lines(
+        subtitle_text.replace("\n", " "),
+        max_width_px=max_text_w,
+        font_scale=font_scale,
+        thickness=thickness,
+    )
+    if not lines:
+        lines = [""]
+
+    usable_h = max(20, target_height - header_h - (2 * padding))
+    # Shrink only as needed; keep text readable.
+    while True:
+        line_sizes = [
+            cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
+            for line in lines
+        ]
+        text_block_h = sum(h for _, h in line_sizes) + line_gap * max(0, len(lines) - 1)
+        if text_block_h <= usable_h or font_scale <= 1.1:
+            break
+        font_scale = max(1.1, font_scale * 0.92)
+        lines = _wrap_text_lines(
+            subtitle_text.replace("\n", " "),
+            max_width_px=max_text_w,
+            font_scale=font_scale,
+            thickness=thickness,
+        ) or [""]
+
+    line_sizes = [
+        cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
+        for line in lines
+    ]
+    line_h = max((h for _, h in line_sizes), default=12)
+    slot_h = max(1, line_h + line_gap)
+    max_lines = max(1, usable_h // slot_h)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        last = lines[-1].rstrip()
+        while last:
+            trial = f"{last}..."
+            tw = cv2.getTextSize(
+                trial, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+            )[0][0]
+            if tw <= max_text_w:
+                lines[-1] = trial
+                break
+            last = last[:-1]
+        if not last:
+            lines[-1] = "..."
+        line_sizes = [
+            cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
+            for line in lines
+        ]
+    text_block_h = sum(h for _, h in line_sizes) + line_gap * max(0, len(lines) - 1)
+
+    panel = np.full((target_height, panel_width, 3), 248, dtype=np.uint8)
+    cv2.rectangle(panel, (0, 0), (panel_width - 1, target_height - 1), (210, 210, 210), 1)
+    cv2.rectangle(panel, (0, 0), (panel_width - 1, header_h), (238, 238, 238), -1)
+    y = header_h + padding + max(0, (usable_h - text_block_h) // 2) + (
+        line_sizes[0][1] if line_sizes else 0
+    )
+    for line, (tw, th) in zip(lines, line_sizes):
+        cv2.putText(
+            panel,
+            line,
+            (text_left, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            (25, 25, 25),
+            thickness,
+            cv2.LINE_AA,
+        )
+        y += th + line_gap
+
+    header = "Subtitles"
+    cv2.putText(
+        panel,
+        header,
+        (padding, 27),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.1,
+        (85, 85, 85),
+        2,
+        cv2.LINE_AA,
+    )
+    return panel
+
+
+def compose_frame_with_subtitle(frame: np.ndarray, subtitle_text: str) -> np.ndarray:
+    """Place the video frame on the left and wrapped subtitle text on the right."""
+    text = (subtitle_text or "").strip()
+    if not text:
+        return frame
+
+    if frame.ndim == 2:
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+    elif frame.shape[2] == 4:
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+
+    h, w = frame.shape[:2]
+    panel_w = max(300, min(700, int(w * 0.50)))
+    panel = render_subtitle_panel(text, target_height=h, panel_width=panel_w)
+    return stitch_images_row([frame, panel])
+
+
 def add_page_number_bar(
     image: np.ndarray,
     page_num: int,
@@ -269,9 +432,9 @@ def add_page_number_bar(
         label = f"Page {page_num}/{total_pages}"
     else:
         label = f"Page {page_num}"
-    left_font_scale = 0.6
-    left_thickness = 2
-    baseline_y = h + int(bar_height * 0.75)
+    left_font_scale = max(0.9, bar_height / 42.0)
+    left_thickness = max(2, int(bar_height / 18.0))
+    baseline_y = h + int(bar_height * 0.72)
     cv2.putText(
         page_canvas,
         label,
@@ -283,8 +446,8 @@ def add_page_number_bar(
         cv2.LINE_AA,
     )
     if right_label:
-        right_font_scale = 0.55
-        right_thickness = 1
+        right_font_scale = max(0.8, bar_height / 46.0)
+        right_thickness = max(1, int(bar_height / 24.0))
         left_w = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, left_font_scale, left_thickness)[0][0]
         available = max(10, w - 36 - left_w)
         fitted = _truncate_footer_text(right_label, available, right_font_scale, right_thickness)
@@ -314,6 +477,8 @@ def export_images_as_png(
     per_row: int = 0,
     lossless_optimize: bool = False,
     image_source_titles: Optional[List[Optional[str]]] = None,
+    subtitle_texts: Optional[List[str]] = None,
+    include_subtitles: bool = False,
 ) -> str:
     """Export selected images as numbered PNG files with optional footer bar.
 
@@ -352,7 +517,13 @@ def export_images_as_png(
             if frame is None:
                 raise RuntimeError(f"Could not read image for PNG export: {os.path.basename(img_path)}")
             frame_num = start_page_number + group_indices[img_idx]
-            frames.append(add_frame_number_watermark(frame, frame_num))
+            frame = add_frame_number_watermark(frame, frame_num)
+            if include_subtitles and subtitle_texts is not None:
+                global_idx = group_indices[img_idx]
+                subtitle = (subtitle_texts[global_idx] or "").strip()
+                if subtitle:
+                    frame = compose_frame_with_subtitle(frame, subtitle)
+            frames.append(frame)
 
         first_img = start_page_number + group_indices[0]
         last_img = start_page_number + group_indices[-1]
@@ -509,6 +680,8 @@ def build_pdf_from_images(
     apply_frame_watermark: bool = True,
     optimize_max_width: Optional[int] = None,
     optimize_quality: Optional[int] = None,
+    subtitle_texts: Optional[List[str]] = None,
+    include_subtitles: bool = False,
 ):
     """Build a PDF from ordered images and optional page footer numbering.
 
@@ -525,6 +698,8 @@ def build_pdf_from_images(
         total_pages (int | None): Global total pages for footer text (`Page X/Y`).
         columns (int): Total images per page.
         per_row (int): Images per row within the grid (0 = same as columns).
+        subtitle_texts (Optional[List[str]]): Subtitle text aligned with image_paths.
+        include_subtitles (bool): When True, render subtitle panel beside each frame.
 
     Returns:
         None: Writes a PDF to disk.
@@ -532,6 +707,8 @@ def build_pdf_from_images(
     from reportlab.lib.colors import black
 
     columns = max(1, int(columns))
+    if subtitle_texts is not None and len(subtitle_texts) != len(image_paths):
+        raise ValueError("subtitle_texts must match image_paths length")
     per_row = max(1, int(per_row)) if per_row else columns
     effective_max_width = int(optimize_max_width or OPTIMIZE_MAX_WIDTH)
     effective_quality = int(optimize_quality or OPTIMIZE_QUALITY)
@@ -560,6 +737,11 @@ def build_pdf_from_images(
 
             cv_frames = []
             for img_idx, img_path in enumerate(group_paths):
+                global_idx = group_indices[img_idx]
+                subtitle = ""
+                if include_subtitles and subtitle_texts is not None:
+                    subtitle = (subtitle_texts[global_idx] or "").strip()
+
                 if optimize and os.path.exists(img_path):
                     frame = cv2.imread(img_path)
                     if frame is not None:
@@ -570,16 +752,20 @@ def build_pdf_from_images(
                                 (effective_max_width, int(fh * effective_max_width / fw)),
                                 interpolation=cv2.INTER_AREA,
                             )
-                        frame_num = start_page_number + group_indices[img_idx]
+                        frame_num = start_page_number + global_idx
                         if apply_frame_watermark:
                             frame = add_frame_number_watermark(frame, frame_num)
+                        if subtitle:
+                            frame = compose_frame_with_subtitle(frame, subtitle)
                         cv_frames.append(frame)
                         continue
                 frame = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
                 if frame is not None:
-                    frame_num = start_page_number + group_indices[img_idx]
+                    frame_num = start_page_number + global_idx
                     if apply_frame_watermark:
                         frame = add_frame_number_watermark(frame, frame_num)
+                    if subtitle:
+                        frame = compose_frame_with_subtitle(frame, subtitle)
                 cv_frames.append(frame)
 
             if any(f is None for f in cv_frames):
@@ -645,18 +831,20 @@ def build_pdf_from_images(
                 c.setFillColor(black)
                 c.rect(0, 0, page_w, bar_height, fill=1, stroke=0)
                 c.setFillColorRGB(1, 1, 1)
-                c.setFont("Helvetica", 14)
-                c.drawString(12, bar_height * 0.25, footer_text)
+                footer_font = max(16, int(bar_height * 0.50))
+                c.setFont("Helvetica-Bold", footer_font)
+                c.drawString(12, bar_height * 0.22, footer_text)
                 if source_title:
                     max_label_width = max(20, page_w - 190)
                     fitted = source_title
-                    while c.stringWidth(fitted, "Helvetica", 12) > max_label_width and len(fitted) > 1:
+                    right_font = max(12, int(bar_height * 0.36))
+                    while c.stringWidth(fitted, "Helvetica", right_font) > max_label_width and len(fitted) > 1:
                         fitted = fitted[:-1]
                     if fitted != source_title and len(fitted) > 1:
                         fitted = fitted[:-1] + "..."
                     c.setFillColorRGB(0.82, 0.82, 0.82)
-                    c.setFont("Helvetica", 12)
-                    c.drawRightString(page_w - 12, bar_height * 0.25, fitted)
+                    c.setFont("Helvetica", right_font)
+                    c.drawRightString(page_w - 12, bar_height * 0.22, fitted)
                 c.showPage()
     finally:
         cleanup_dir(tmp_dir)

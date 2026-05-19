@@ -34,6 +34,7 @@ from modules.core import file_utils as futils
 from modules.core import pdf_utils as pdfm
 from modules.core import similarity as sim
 from modules.core import video_processing as vpm
+from modules.core import subtitles as subm
 
 PdfReader = pdfm.PdfReader
 PdfWriter = pdfm.PdfWriter
@@ -1411,6 +1412,8 @@ def extract_frames_and_select():
                 root, video_collections, temp_dir, meta,
                 extra_image_paths=list(extra_images),
                 queued_pdf_paths=pdf_paths,
+                video_source_paths=video_paths,
+                preset_name=preset_name,
             ))
 
         except RuntimeError as e:
@@ -1451,7 +1454,7 @@ def open_output_folder():
 MAX_SLOTS_IN_GRID    = 20
 THUMBNAIL_MAX_WIDTH  = 95    # Smaller thumbnails help fit denser pages (up to 20 thumbs/page)
 ZOOM_MAX_WIDTH       = 900
-PAGE_NUMBER_BAR_PTS  = 36
+PAGE_NUMBER_BAR_PTS  = 64
 FRAMES_PER_PAGE_OPTIONS = (6, 8, 12, 16, 20)
 PDF_OPTIMIZATION_PROFILES = {
     "None (best quality)": {
@@ -1493,12 +1496,31 @@ class FrameSelectionWindow:
     Column 5: Action buttons (smart select, keep/skip, PDF export, etc.)
     """
 
-    def __init__(self, parent, video_collections, temp_dir, meta, extra_image_paths=None, queued_pdf_paths=None):
+    def __init__(
+        self,
+        parent,
+        video_collections,
+        temp_dir,
+        meta,
+        extra_image_paths=None,
+        queued_pdf_paths=None,
+        video_source_paths=None,
+        preset_name=None,
+    ):
         self.video_collections  = video_collections    # List of (video_name, [frame_paths])
         self.temp_dir           = temp_dir
         self.meta               = meta
         self.extra_image_paths: List[str] = list(extra_image_paths or [])
         self.queued_pdf_paths: List[str] = list(queued_pdf_paths or [])
+        self.video_source_paths: List[str] = list(video_source_paths or [])
+        preset_name = preset_name or "Every 3 seconds — original resolution"
+        self.preset_name = preset_name
+        self.seconds_step = int(PRESETS.get(preset_name, PRESETS["Every 3 seconds — original resolution"])["seconds"])
+
+        # Per-video subtitle cues and aligned text per frame index
+        self.subtitle_cues_by_ci: Dict[int, List[subm.SubtitleCue]] = {}
+        self.subtitle_file_by_ci: Dict[int, str] = {}
+        self.frame_subtitles: Dict[Tuple[int, int], str] = {}
 
         # keep[(collection_index, frame_index)] = True/False
         self.keep: Dict[Tuple[int, int], bool] = {}
@@ -1569,6 +1591,32 @@ class FrameSelectionWindow:
             self.video_listbox.itemconfig(i, bg="#ffffff" if i % 2 == 0 else "#eaf2ff")
 
         self.video_count_label.config(text=f"{len(video_collections)} video(s) in queue")
+
+        sub_btn_frame = tk.Frame(c1, bg="#f0f4f8")
+        sub_btn_frame.pack(fill="x", padx=6, pady=(4, 2))
+        tk.Button(
+            sub_btn_frame,
+            text="Import Subtitles (.vtt / .txt)",
+            font=("", 9),
+            command=self._import_subtitles_for_current_video,
+        ).pack(fill="x")
+        tk.Button(
+            sub_btn_frame,
+            text="Clear Subtitles for This Video",
+            font=("", 8),
+            command=self._clear_subtitles_for_current_video,
+        ).pack(fill="x", pady=(2, 0))
+        self.subtitle_status_label = tk.Label(
+            c1,
+            text="No subtitle file loaded for the selected video.",
+            font=("", 8),
+            fg="#555",
+            bg="#f0f4f8",
+            wraplength=200,
+            justify="left",
+        )
+        self.subtitle_status_label.pack(anchor="w", padx=8, pady=(2, 4))
+
         paned.add(c1, minsize=220)
 
         # ═══════════ COLUMN 2 — AI Similarity Groups ═══════════════
@@ -1746,11 +1794,16 @@ class FrameSelectionWindow:
             img_lbl.pack(fill="both", expand=True, padx=2)
             img_lbl.bind("<Button-1>", lambda e, s=slot: self._on_thumbnail_click(s))
             img_lbl.bind("<Button-3>", lambda e, s=slot: self._on_thumbnail_right_click(s))
+            sub_lbl = tk.Label(
+                cell, text="", font=("", 7), wraplength=168, justify="left",
+                bg="light gray", fg="#2c3e50", anchor="w",
+            )
+            sub_lbl.pack(fill="x", padx=3, pady=(0, 1))
             v  = tk.BooleanVar(value=False)
             cb = tk.Checkbutton(cell, text="Include in PDF", variable=v,
                                 font=("", 8), command=self._on_checkbox_toggled)
             cb.pack(pady=1)
-            self.grid_cells.append((cell, badge_lbl, img_lbl, cb))
+            self.grid_cells.append((cell, badge_lbl, img_lbl, sub_lbl, cb))
             self.check_vars.append(v)
             self.photo_refs.append(None)
 
@@ -1826,6 +1879,23 @@ class FrameSelectionWindow:
         self._update_extra_images_label()
         _action_button("Add Extra Images",    self._import_extra_images, bg="#6d4c41")
         _action_button("Clear Extra Images",  self._clear_extra_images,  bg="#795548")
+
+        tk.Frame(c5, height=1, bg="#4a6572").pack(fill="x", padx=8, pady=6)
+
+        _section_header("Subtitles in PDF", "#4a235a")
+        self.include_subtitles_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            c5, text="Include subtitles beside frames in PDF/PNG",
+            variable=self.include_subtitles_var,
+            bg="#2c3e50", fg="white", selectcolor="#1e2e3e",
+            activebackground="#2c3e50", activeforeground="white", font=("", 8),
+            wraplength=155, justify="left",
+        ).pack(anchor="w", padx=10, pady=(2, 0))
+        tk.Label(
+            c5,
+            text="Import a .vtt or .txt file per video (column 1),\nthen matched text appears under each thumbnail.",
+            font=("", 8), bg="#2c3e50", fg="#aaaaaa", wraplength=155, justify="left",
+        ).pack(anchor="w", padx=8, pady=(0, 4))
 
         tk.Frame(c5, height=1, bg="#4a6572").pack(fill="x", padx=8, pady=6)
 
@@ -2098,6 +2168,142 @@ class FrameSelectionWindow:
         except Exception:
             pass
 
+    # ─── Subtitle import / alignment ──────────────────────────────
+    def _estimate_duration_for_ci(self, ci: int) -> Optional[float]:
+        """Estimate video duration from frame timestamps or source file metadata."""
+        _, paths = self.video_collections[ci]
+        if paths:
+            last_t = subm.parse_frame_timestamp(paths[-1])
+            if last_t is not None:
+                return float(last_t + self.seconds_step)
+        if ci < len(self.video_source_paths):
+            vp = self.video_source_paths[ci]
+            try:
+                with suppress_ffmpeg_stderr():
+                    cap = cv2.VideoCapture(vp)
+                if cap.isOpened():
+                    fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+                    tf = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                    cap.release()
+                    if fps > 0 and tf > 0:
+                        return tf / fps
+            except Exception:
+                pass
+        return None
+
+    def _rebuild_frame_subtitles_for_ci(self, ci: int) -> None:
+        """Recompute ``frame_subtitles`` for one video from loaded cues."""
+        keys_to_drop = [key for key in self.frame_subtitles if key[0] == ci]
+        for key in keys_to_drop:
+            del self.frame_subtitles[key]
+        cues = self.subtitle_cues_by_ci.get(ci)
+        if not cues:
+            return
+        _, paths = self.video_collections[ci]
+        aligned = subm.align_cues_to_frame_indices(paths, cues, self.seconds_step)
+        for fi, text in aligned.items():
+            if text:
+                self.frame_subtitles[(ci, fi)] = text
+
+    def _subtitle_preview(self, text: str, max_len: int = 120) -> str:
+        one_line = " ".join((text or "").split())
+        if len(one_line) <= max_len:
+            return one_line
+        return one_line[: max_len - 3] + "..."
+
+    def _update_subtitle_status_label(self, ci: Optional[int] = None) -> None:
+        if ci is None:
+            ci = self.selected_collection_idx
+        src = self.subtitle_file_by_ci.get(ci)
+        if not src:
+            self.subtitle_status_label.config(
+                text="No subtitle file loaded for the selected video."
+            )
+            return
+        matched = sum(1 for (c, _) in self.frame_subtitles.keys() if c == ci)
+        self.subtitle_status_label.config(
+            text=f"Loaded: {os.path.basename(src)}\n"
+                 f"{matched} frame(s) have matching subtitle text."
+        )
+
+    def _update_video_list_labels(self) -> None:
+        sel = self.video_listbox.curselection()
+        selected_idx = sel[0] if sel else self.selected_collection_idx
+        self.video_listbox.delete(0, tk.END)
+        for i, (vname, _) in enumerate(self.video_collections):
+            tag = " [subs]" if i in self.subtitle_cues_by_ci else ""
+            self.video_listbox.insert(tk.END, f"  {vname}{tag}")
+            self.video_listbox.itemconfig(i, bg="#ffffff" if i % 2 == 0 else "#eaf2ff")
+        if 0 <= selected_idx < len(self.video_collections):
+            self.video_listbox.selection_set(selected_idx)
+            self.video_listbox.activate(selected_idx)
+
+    def _import_subtitles_for_current_video(self) -> None:
+        ci = self.selected_collection_idx
+        vname, paths = self.video_collections[ci]
+        path = filedialog.askopenfilename(
+            title=f"Import subtitles for {vname}",
+            filetypes=[
+                ("Subtitle / transcript", "*.vtt *.webvtt *.txt"),
+                ("WebVTT", "*.vtt *.webvtt"),
+                ("Transcript text", "*.txt"),
+                ("All files", "*.*"),
+            ],
+        )
+        if not path:
+            return
+        try:
+            duration = self._estimate_duration_for_ci(ci)
+            cues = subm.load_subtitle_file(path, video_duration_sec=duration)
+            if not cues:
+                messagebox.showwarning(
+                    "No Subtitles Found",
+                    "The file did not contain any readable subtitle or transcript text.",
+                )
+                return
+            self.subtitle_cues_by_ci[ci] = cues
+            self.subtitle_file_by_ci[ci] = path
+            self._rebuild_frame_subtitles_for_ci(ci)
+            self._update_video_list_labels()
+            self._update_subtitle_status_label(ci)
+            self._refresh_grid()
+            messagebox.showinfo(
+                "Subtitles Loaded",
+                f"Loaded {len(cues)} cue(s) from:\n{os.path.basename(path)}\n\n"
+                f"Matched text for "
+                f"{sum(1 for (c, _) in self.frame_subtitles if c == ci)} of "
+                f"{len(paths)} frames.",
+            )
+        except Exception as exc:
+            messagebox.showerror("Import Failed", str(exc))
+
+    def _clear_subtitles_for_current_video(self) -> None:
+        ci = self.selected_collection_idx
+        if ci not in self.subtitle_cues_by_ci:
+            messagebox.showinfo("No Subtitles", "This video has no loaded subtitles.")
+            return
+        if not messagebox.askyesno(
+            "Clear Subtitles",
+            "Remove the imported subtitle file mapping for this video?",
+        ):
+            return
+        self.subtitle_cues_by_ci.pop(ci, None)
+        self.subtitle_file_by_ci.pop(ci, None)
+        keys_to_drop = [key for key in self.frame_subtitles if key[0] == ci]
+        for key in keys_to_drop:
+            del self.frame_subtitles[key]
+        self._update_video_list_labels()
+        self._update_subtitle_status_label(ci)
+        self._refresh_grid()
+
+    def _get_subtitle_texts_for_paths(self, image_paths: List[str]) -> List[str]:
+        """Build subtitle list aligned with selected image paths (empty for extras)."""
+        path_to_sub: Dict[str, str] = {}
+        for ci, (_, paths) in enumerate(self.video_collections):
+            for fi, p in enumerate(paths):
+                path_to_sub[p] = self.frame_subtitles.get((ci, fi), "")
+        return [path_to_sub.get(p, "") for p in image_paths]
+
     # ─── Video selection ──────────────────────────────────────────
     def _on_video_selected(self, event):
         sel = self.video_listbox.curselection()
@@ -2112,6 +2318,7 @@ class FrameSelectionWindow:
                 fg="white" if is_selected else "black"
             )
         _, paths = self.video_collections[ci]
+        self._update_subtitle_status_label(ci)
         self._filtered_indices = list(range(len(paths)))
         self._current_filter   = None
         self.filter_label.config(text="")
@@ -2519,7 +2726,7 @@ class FrameSelectionWindow:
 
         for slot in range(MAX_SLOTS_IN_GRID):
             display_pos = start + slot
-            cell, badge_lbl, img_lbl, cb = self.grid_cells[slot]
+            cell, badge_lbl, img_lbl, sub_lbl, cb = self.grid_cells[slot]
 
             if slot < n and display_pos < total_frames:
                 fi      = display_list[display_pos]
@@ -2552,12 +2759,21 @@ class FrameSelectionWindow:
                 badge_lbl.config(text=badge_text, bg=badge_bg)
                 self.check_vars[slot].set(self.keep.get((ci, fi), False))
                 cb.config(state="normal")
+                sub_text = self.frame_subtitles.get((ci, fi), "")
+                if sub_text:
+                    sub_lbl.config(
+                        text=self._subtitle_preview(sub_text, max_len=140),
+                        fg="#1a5276",
+                    )
+                else:
+                    sub_lbl.config(text="(no subtitle for this frame)", fg="#888")
                 self._update_cell_color(slot, fi, ci, badge_bg)
             else:
                 self.photo_refs[slot] = None
-                for w in (cell, badge_lbl):
+                for w in (cell, badge_lbl, sub_lbl):
                     w.config(bg="#f5f5f5")
                 img_lbl.config(image="", text="", bg="#f5f5f5")
+                sub_lbl.config(text="", fg="#888")
                 self.check_vars[slot].set(False)
                 cb.config(state="disabled")
 
@@ -2569,10 +2785,11 @@ class FrameSelectionWindow:
         )
 
     def _update_cell_color(self, slot, fi, ci, default_bg):
-        cell, badge_lbl, img_lbl, _ = self.grid_cells[slot]
+        cell, badge_lbl, img_lbl, sub_lbl, _ = self.grid_cells[slot]
         bg = "#aaffaa" if self.keep.get((ci, fi), False) else default_bg
         cell.config(bg=bg)
         badge_lbl.config(bg=bg)
+        sub_lbl.config(bg=bg)
 
     # ─── Click and checkbox handlers ──────────────────────────────
     def _on_thumbnail_click(self, slot):
@@ -2705,13 +2922,30 @@ class FrameSelectionWindow:
                 extra = f"Group {ginfo[0] + 1} representative"
             else:
                 extra = "Unique frame"
+            sub_full = self.frame_subtitles.get((ci, fi), "")
             zw = tk.Toplevel(self.win)
             zw.title(f"Frame {fi + 1}  —  {extra}  —  right-click to close")
             zw.protocol("WM_DELETE_WINDOW", lambda: self._close_zoom(zw))
+            body = tk.Frame(zw)
+            body.pack(fill="both", expand=True)
             photo = tk.PhotoImage(file=zoom_path)
             self._zoom_ref = photo
-            lbl = tk.Label(zw, image=photo, cursor="hand2")
-            lbl.pack(padx=2, pady=2)
+            lbl = tk.Label(body, image=photo, cursor="hand2")
+            lbl.pack(side="left", padx=2, pady=2)
+            if sub_full:
+                sub_panel = tk.Label(
+                    body,
+                    text=sub_full,
+                    font=("", 10),
+                    wraplength=360,
+                    justify="left",
+                    anchor="nw",
+                    padx=10,
+                    pady=8,
+                    bg="#f7f7f7",
+                    fg="#222",
+                )
+                sub_panel.pack(side="left", fill="y", padx=(4, 8), pady=4)
             lbl.bind("<Button-3>", lambda e: self._close_zoom(zw))
             zw.bind("<Button-3>",  lambda e: self._close_zoom(zw))
             self._zoom_win = zw
@@ -2830,6 +3064,8 @@ class FrameSelectionWindow:
         split_enabled = self.split_var.get()
         keep_unsplit_when_split = split_enabled and self.keep_unsplit_when_split_var.get()
         export_pngs = self.export_pngs_var.get()
+        include_subtitles = self.include_subtitles_var.get()
+        subtitle_texts = self._get_subtitle_texts_for_paths(all_images) if include_subtitles else None
         target_size_mb = 10.0
         if split_enabled:
             try:
@@ -2885,6 +3121,8 @@ class FrameSelectionWindow:
                         columns=self.columns_var.get(),
                         per_row=self.per_row_var.get(),
                         image_source_titles=all_image_source_titles,
+                        subtitle_texts=subtitle_texts,
+                        include_subtitles=include_subtitles,
                     )
 
                     if self.queued_pdf_paths:
@@ -2937,6 +3175,8 @@ class FrameSelectionWindow:
                         columns=self.columns_var.get(),
                         per_row=self.per_row_var.get(),
                         image_source_titles=all_image_source_titles,
+                        subtitle_texts=subtitle_texts,
+                        include_subtitles=include_subtitles,
                     )
                     if self.queued_pdf_paths:
                         ensure_pdf_merge_available()
@@ -2979,6 +3219,7 @@ class FrameSelectionWindow:
                             )
                             export_images.extend(converted)
                             export_source_titles.extend([None] * len(converted))
+                    export_subtitles = self._get_subtitle_texts_for_paths(export_images) if include_subtitles else None
                     export_images_as_png(
                         export_images,
                         png_dir,
@@ -2990,6 +3231,8 @@ class FrameSelectionWindow:
                         per_row=self.per_row_var.get(),
                         lossless_optimize=self.lossless_png_optimize_var.get(),
                         image_source_titles=export_source_titles,
+                        subtitle_texts=export_subtitles,
+                        include_subtitles=include_subtitles,
                     )
                     done_msg += (
                         f"\n\nAll output pages (frames/images/PDF pages) were also exported as PNG files in:\n"
