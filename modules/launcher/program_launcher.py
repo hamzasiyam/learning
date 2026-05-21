@@ -21,6 +21,7 @@ class Program:
 
 PROGRAMS: List[Program] = [
     Program("video_to_pdf", "Video + PDF Combiner", "apps.video_to_pdf", "Convert videos, merge PDFs, and select frames."),
+    Program("video_vtt_to_pdf", "Video + VTT Timestamp PDF", "apps.video_vtt_to_pdf", "Extract only VTT timestamp frames and build subtitle PDF pages."),
     Program("pdf_merge", "PDF Merger", "apps.merge_pdf", "Merge and reorder PDF files."),
     Program("flashcards", "Flashcards CSV Merger", "apps.flashcards", "Combine CSV highlight/note files with title and author."),
     Program("links_csv", "Links + Notebook CSV Builder", "apps.image_links_and_notebooklm", "Merge image links with Location/Note CSV data."),
