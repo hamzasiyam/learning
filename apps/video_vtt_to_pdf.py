@@ -12,7 +12,7 @@ from typing import List, Tuple
 import cv2
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from tkinter.ttk import Progressbar
+from tkinter.ttk import Combobox, Progressbar
 
 from modules.core import config as cfg
 from modules.core import file_utils as futils
@@ -22,7 +22,7 @@ from modules.core import subtitles as subm
 PAGE_NUMBER_BAR_PTS = 64
 DEFAULT_MAX_WIDTH = int(cfg.PRESETS["Every 8 seconds — sharp text"]["width"])
 DEFAULT_JPEG_QUALITY = 95
-MAX_SPLIT_MB = 8.0
+PAGES_PER_SPLIT = 5
 BALANCED_PDF_MAX_WIDTH = 1400
 BALANCED_PDF_QUALITY = 72
 
@@ -48,6 +48,7 @@ class VttTimestampPdfApp(tk.Tk):
         self.video_var = tk.StringVar()
         self.vtt_var = tk.StringVar()
         self.output_var = tk.StringVar()
+        self.frames_per_row_var = tk.StringVar(value="1")
         self.status_var = tk.StringVar(value="Choose a video and a VTT file.")
 
         self.worker_thread: threading.Thread | None = None
@@ -70,8 +71,8 @@ class VttTimestampPdfApp(tk.Tk):
             outer,
             text=(
                 "Extract one frame at each VTT cue start timestamp and build a PDF using:\n"
-                "12 images per page, 2 images per row, with transcript text beside each image.\n"
-                "Output is saved in a dedicated folder, split into max 8 MB PDF parts."
+                "12 images per page, with selectable 1 or 2 images per row.\n"
+                "Output is saved in a dedicated folder, split every 5 pages."
             ),
             justify="left",
             fg="#555",
@@ -80,6 +81,17 @@ class VttTimestampPdfApp(tk.Tk):
         self._path_row(outer, "Video file:", self.video_var, self._pick_video)
         self._path_row(outer, "VTT transcript:", self.vtt_var, self._pick_vtt)
         self._path_row(outer, "Output PDF:", self.output_var, self._pick_output_pdf)
+        layout_row = tk.Frame(outer)
+        layout_row.pack(anchor="w", pady=(4, 6))
+        tk.Label(layout_row, text="Frames per row:", width=14, anchor="w").pack(side="left")
+        per_row_combo = Combobox(
+            layout_row,
+            textvariable=self.frames_per_row_var,
+            values=["1", "2"],
+            state="readonly",
+            width=4,
+        )
+        per_row_combo.pack(side="left")
 
         controls = tk.Frame(outer)
         controls.pack(fill="x", pady=(10, 4))
@@ -307,20 +319,21 @@ class VttTimestampPdfApp(tk.Tk):
                         optimize_quality=BALANCED_PDF_QUALITY,
                         total_pages=len(frame_paths),
                         columns=12,
-                        per_row=2,
+                        per_row=2 if self.frames_per_row_var.get().strip() == "2" else 1,
                         image_source_titles=source_titles,
                         subtitle_texts=subtitle_texts,
                         include_subtitles=True,
+                        include_subtitles_as_text=True,
                         progress_callback=on_pdf_progress,
                     )
                     if self.stop_event.is_set():
                         raise RuntimeError("Stopped")
 
                     split_target = os.path.join(run_dir, f"{futils.safe_filename(pdf_base)}.pdf")
-                    outputs = pdfm.split_existing_pdf_by_size(
+                    outputs = pdfm.split_existing_pdf_by_page_count(
                         combined_pdf_path,
                         split_target,
-                        target_size_mb=MAX_SPLIT_MB,
+                        pages_per_part=PAGES_PER_SPLIT,
                         metadata=pdfm.meta_to_pdf_metadata(meta),
                     )
                     existing_outputs = [path for path in outputs if os.path.exists(path)]
@@ -338,7 +351,7 @@ class VttTimestampPdfApp(tk.Tk):
                 success_msg = (
                     f"PDF(s) created successfully.\n\n"
                     f"Output folder:\n{run_dir}\n\n"
-                    f"PDF part(s): {len(existing_outputs)} (max {MAX_SPLIT_MB:.0f} MB each)\n"
+                    f"PDF part(s): {len(existing_outputs)} ({PAGES_PER_SPLIT} pages each, except final part)\n"
                     f"Used {len(frame_paths)} frame(s) from transcript timestamps."
                 )
                 if skipped:

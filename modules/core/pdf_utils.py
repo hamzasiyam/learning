@@ -382,6 +382,7 @@ def render_subtitle_panel(
     subtitle_text: str,
     target_height: int,
     panel_width: Optional[int] = None,
+    render_text: bool = True,
 ) -> np.ndarray:
     """Render subtitle text as a light panel image for side-by-side layout.
 
@@ -396,8 +397,8 @@ def render_subtitle_panel(
     icon_box_x1, icon_box_y1, icon_box_x2, icon_box_y2 = _subtitle_icon_box_rect(
         panel_width, target_height, padding=padding
     )
-    icon_box_side = icon_box_x2 - icon_box_x1
-    icon_box_reserve_h = icon_box_side + padding
+    icon_box_h = icon_box_y2 - icon_box_y1
+    icon_box_reserve_h = icon_box_h + padding
     # Intentionally large for print readability.
     font_scale = 1.45
     thickness = 2
@@ -462,21 +463,22 @@ def render_subtitle_panel(
     panel = np.full((target_height, panel_width, 3), 248, dtype=np.uint8)
     cv2.rectangle(panel, (0, 0), (panel_width - 1, target_height - 1), (210, 210, 210), 1)
     cv2.rectangle(panel, (0, 0), (panel_width - 1, header_h), (238, 238, 238), -1)
-    y = header_h + padding + max(0, (usable_h - text_block_h) // 2) + (
-        line_sizes[0][1] if line_sizes else 0
-    )
-    for line, (tw, th) in zip(lines, line_sizes):
-        cv2.putText(
-            panel,
-            line,
-            (text_left, y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            font_scale,
-            (25, 25, 25),
-            thickness,
-            cv2.LINE_AA,
+    if render_text:
+        y = header_h + padding + max(0, (usable_h - text_block_h) // 2) + (
+            line_sizes[0][1] if line_sizes else 0
         )
-        y += th + line_gap
+        for line, (tw, th) in zip(lines, line_sizes):
+            cv2.putText(
+                panel,
+                line,
+                (text_left, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_scale,
+                (25, 25, 25),
+                thickness,
+                cv2.LINE_AA,
+            )
+            y += th + line_gap
 
     header = "Subtitles"
     cv2.putText(
@@ -536,11 +538,11 @@ def _learning_box_dims_from_panel_height(panel_height: int) -> Tuple[int, int]:
 def compose_frame_with_subtitle_and_icon_box(
     frame: np.ndarray,
     subtitle_text: str,
-) -> Tuple[np.ndarray, Optional[Tuple[int, int, int, int]]]:
+) -> Tuple[np.ndarray, Optional[Tuple[int, int, int, int]], Optional[Tuple[int, int, int, int]]]:
     """Compose frame+subtitle panel and return icon-box rect in composed coords."""
     text = (subtitle_text or "").strip()
     if not text:
-        return frame, None
+        return frame, None, None
 
     if frame.ndim == 2:
         frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
@@ -549,27 +551,95 @@ def compose_frame_with_subtitle_and_icon_box(
 
     h, w = frame.shape[:2]
     panel_w = max(300, min(700, int(w * 0.50)))
-    panel = render_subtitle_panel(text, target_height=h, panel_width=panel_w)
+    panel = render_subtitle_panel(text, target_height=h, panel_width=panel_w, render_text=False)
     box_x1, box_y1, box_x2, box_y2 = _subtitle_icon_box_rect(panel_w, h)
     composed = stitch_images_row([frame, panel])
     x_shift = w + MERGE_SEPARATOR_PX
     icon_box = (box_x1 + x_shift, box_y1, box_x2 + x_shift, box_y2)
-    return composed, icon_box
+    panel_rect = (x_shift, 0, x_shift + panel_w, h)
+    return composed, icon_box, panel_rect
 
 
 def compose_frame_with_subtitle(frame: np.ndarray, subtitle_text: str) -> np.ndarray:
     """Place the video frame on the left and wrapped subtitle text on the right."""
-    composed, _icon_box = compose_frame_with_subtitle_and_icon_box(frame, subtitle_text)
+    composed, _icon_box, _panel_rect = compose_frame_with_subtitle_and_icon_box(frame, subtitle_text)
     return composed
 
 
-def _draw_learning_radio_group(c, field_name: str, rect: Tuple[float, float, float, float]) -> None:
-    """Draw one 3-option radio group (check/x/star) in the provided PDF rect.
+def _wrap_pdf_text_lines(c, text: str, max_width: float, font_name: str, font_size: float) -> List[str]:
+    """Wrap text for ReportLab rendering within a maximum width."""
+    content = " ".join((text or "").split())
+    if not content:
+        return []
+    words = content.split()
+    lines: List[str] = []
+    current = ""
+    for word in words:
+        trial = f"{current} {word}".strip()
+        if c.stringWidth(trial, font_name, font_size) <= max_width or not current:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
 
-    Layout per column (top to bottom uses full height — no dead space):
-      top_pad | radio | gap | icon | bottom_pad
-    """
-    from reportlab.lib.colors import black, Color
+
+def _draw_selectable_subtitle_text(
+    c,
+    subtitle_text: str,
+    panel_rect: Tuple[float, float, float, float],
+) -> None:
+    """Draw selectable subtitle text inside a subtitle panel rectangle."""
+    if not subtitle_text:
+        return
+    x1, y1, x2, y2 = panel_rect
+    panel_w = max(1.0, x2 - x1)
+    panel_h = max(1.0, y2 - y1)
+    pad_x = max(14.0, panel_w * 0.05)
+    pad_y = max(12.0, panel_h * 0.05)
+    header_h = max(24.0, panel_h * 0.08)
+    _box_x1, box_y1, _box_x2, box_y2 = _subtitle_icon_box_rect(int(panel_w), int(panel_h), padding=int(pad_y))
+    icon_box_h = max(1.0, float(box_y2 - box_y1))
+    reserve_bottom = icon_box_h + pad_y
+
+    text_left = x1 + pad_x
+    text_right = x2 - pad_x
+    max_text_w = max(30.0, text_right - text_left)
+    text_top = y2 - header_h - pad_y
+    text_bottom = y1 + reserve_bottom
+    available_h = max(20.0, text_top - text_bottom)
+
+    font_name = "Helvetica"
+    # Keep subtitle text large for readability/marking in print workflows.
+    font_size = max(20.0, min(40.0, panel_h * 0.090))
+    line_gap = max(4.0, font_size * 0.20)
+    lines = _wrap_pdf_text_lines(c, subtitle_text, max_text_w, font_name, font_size)
+    if not lines:
+        return
+
+    max_lines = max(1, int(available_h // (font_size + line_gap)))
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        last = lines[-1]
+        while last and c.stringWidth(f"{last}...", font_name, font_size) > max_text_w:
+            last = last[:-1]
+        lines[-1] = f"{last}..." if last else "..."
+
+    y = text_top - font_size
+    c.setFillColorRGB(0.10, 0.10, 0.10)
+    c.setFont(font_name, font_size)
+    for line in lines:
+        if y < text_bottom:
+            break
+        c.drawString(text_left, y, line)
+        y -= (font_size + line_gap)
+
+
+def _draw_learning_radio_group(c, field_name: str, rect: Tuple[float, float, float, float]) -> None:
+    """Draw one 3-option icon panel (check/x/star) in the provided PDF rect."""
+    from reportlab.lib.colors import Color
 
     x1, y1, x2, y2 = rect
     box_w = max(20.0, float(x2 - x1))
@@ -588,24 +658,9 @@ def _draw_learning_radio_group(c, field_name: str, rect: Tuple[float, float, flo
         Color(0.90, 0.74, 0.06),  # yellow star
     ]
 
-    # Proportional vertical layout that always sums to 1.0 of box_h.
-    top_pad_frac = 0.12
-    radio_frac = 0.28
-    gap_frac = 0.06
-    icon_frac = 0.40
-    bottom_pad_frac = 0.14  # sums to 1.00
-
-    top_pad = option_h * top_pad_frac
-    radio_h = option_h * radio_frac
-    gap_h = option_h * gap_frac
-    icon_h = option_h * icon_frac
-    bottom_pad = option_h * bottom_pad_frac
-
-    # Radio diameter must fit inside its column band on BOTH axes,
-    # with a safety margin so the rendered widget never touches column edges.
-    safety = 4.0 * LEARNING_UI_SCALE
-    radio_size = min(radio_h - safety, option_w - (2.0 * safety))
-    radio_size = max(8.0 * LEARNING_UI_SCALE, radio_size)
+    top_pad = option_h * 0.12
+    bottom_pad = option_h * 0.12
+    icon_h = max(10.0, option_h - top_pad - bottom_pad)
 
     # Frame and column dividers.
     c.setStrokeColor(Color(0.55, 0.55, 0.55))
@@ -615,41 +670,19 @@ def _draw_learning_radio_group(c, field_name: str, rect: Tuple[float, float, flo
         sx = x1 + (option_w * idx)
         c.line(sx, y1, sx, y2)
 
-    for idx, (value, symbol) in enumerate(options):
+    for idx, (_value, symbol) in enumerate(options):
         opt_x1 = x1 + (idx * option_w)
         cx = opt_x1 + (option_w * 0.5)
 
-        # Radio at top: centered horizontally inside its column.
-        radio_x = cx - (radio_size / 2.0)
-        radio_y = (y1 + bottom_pad + icon_h + gap_h) + ((radio_h - radio_size) / 2.0)
-
-        # Icon directly below radio: centered text baseline.
-        icon_font = min(option_w * 0.78, icon_h * 1.05)
+        # Icon centered in its column with generous margins.
+        icon_font = min(option_w * 0.78, icon_h * 1.02)
         icon_font = max(12.0 * LEARNING_UI_SCALE, icon_font)
-        icon_baseline_y = y1 + bottom_pad + ((icon_h - (icon_font * 0.78)) / 2.0)
-
-        c.acroForm.radio(
-            name=field_name,
-            value=value,
-            selected=False,
-            buttonStyle="circle",
-            shape="circle",
-            borderColor=black,
-            borderWidth=0,
-            borderStyle="solid",
-            size=radio_size,
-            x=radio_x,
-            y=radio_y,
-            annotationFlags="print",
-            fieldFlags="noToggleToOff radio",
-            forceBorder=False,
-            tooltip=f"{symbol} {value}",
-        )
+        icon_baseline_y = y1 + bottom_pad + ((icon_h - (icon_font * 0.80)) / 2.0)
 
         c.setFont("Helvetica-Bold", int(icon_font))
         c.setFillColor(option_symbol_colors[idx])
         c.drawCentredString(cx, icon_baseline_y, symbol)
-    c.setFillColor(black)
+    c.setFillColor(Color(0, 0, 0))
 
 
 def add_page_number_bar(
@@ -964,6 +997,7 @@ def build_pdf_from_images(
     optimize_quality: Optional[int] = None,
     subtitle_texts: Optional[List[str]] = None,
     include_subtitles: bool = False,
+    include_subtitles_as_text: bool = False,
 ):
     """Build a PDF from ordered images and optional page footer numbering.
 
@@ -1019,11 +1053,14 @@ def build_pdf_from_images(
 
             cv_frames = []
             frame_icon_boxes: List[Optional[Tuple[int, int, int, int]]] = []
+            frame_panel_rects: List[Optional[Tuple[int, int, int, int]]] = []
+            frame_subtitles: List[str] = []
             for img_idx, img_path in enumerate(group_paths):
                 global_idx = group_indices[img_idx]
                 subtitle = ""
                 if include_subtitles and subtitle_texts is not None:
                     subtitle = (subtitle_texts[global_idx] or "").strip()
+                frame_subtitles.append(subtitle)
 
                 if optimize and os.path.exists(img_path):
                     frame = cv2.imread(img_path)
@@ -1039,11 +1076,13 @@ def build_pdf_from_images(
                         if apply_frame_watermark:
                             frame = add_frame_number_watermark(frame, frame_num)
                         if subtitle:
-                            frame, icon_box = compose_frame_with_subtitle_and_icon_box(frame, subtitle)
+                            frame, icon_box, panel_rect = compose_frame_with_subtitle_and_icon_box(frame, subtitle)
                         else:
                             icon_box = None
+                            panel_rect = None
                         cv_frames.append(frame)
                         frame_icon_boxes.append(icon_box)
+                        frame_panel_rects.append(panel_rect)
                         continue
                 frame = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
                 if frame is not None:
@@ -1051,13 +1090,16 @@ def build_pdf_from_images(
                     if apply_frame_watermark:
                         frame = add_frame_number_watermark(frame, frame_num)
                     if subtitle:
-                        frame, icon_box = compose_frame_with_subtitle_and_icon_box(frame, subtitle)
+                        frame, icon_box, panel_rect = compose_frame_with_subtitle_and_icon_box(frame, subtitle)
                     else:
                         icon_box = None
+                        panel_rect = None
                 else:
                     icon_box = None
+                    panel_rect = None
                 cv_frames.append(frame)
                 frame_icon_boxes.append(icon_box)
+                frame_panel_rects.append(panel_rect)
 
             if any(f is None for f in cv_frames):
                 bad = [os.path.basename(p) for p, f in zip(group_paths, cv_frames) if f is None]
@@ -1068,12 +1110,17 @@ def build_pdf_from_images(
                     composite, composite_icon_boxes = stitch_images_grid_with_rects(
                         cv_frames, per_row, frame_icon_boxes
                     )
+                    _composite_for_panels, composite_panel_rects = stitch_images_grid_with_rects(
+                        cv_frames, per_row, frame_panel_rects
+                    )
                 else:
                     composite = stitch_images_grid(cv_frames, per_row)
                     composite_icon_boxes = []
+                    composite_panel_rects = []
             else:
                 composite = cv_frames[0]
                 composite_icon_boxes = [frame_icon_boxes[0]] if include_subtitles else []
+                composite_panel_rects = [frame_panel_rects[0]] if include_subtitles else []
             if composite.ndim == 2:
                 composite = cv2.cvtColor(composite, cv2.COLOR_GRAY2BGR)
             elif composite.shape[2] == 4:
@@ -1099,6 +1146,16 @@ def build_pdf_from_images(
             source_title = group_titles[0] if group_titles and group_titles[0] else ""
             img = ImageReader(tmp_path)
             w, h = img.getSize()
+            subtitle_overlays = []
+            if include_subtitles and include_subtitles_as_text:
+                for panel_rect, subtitle_text in zip(composite_panel_rects, frame_subtitles):
+                    if panel_rect and subtitle_text:
+                        subtitle_overlays.append(
+                            {
+                                "panel_rect": panel_rect,
+                                "text": subtitle_text,
+                            }
+                        )
             page_specs.append(
                 {
                     "tmp_path": tmp_path,
@@ -1107,6 +1164,7 @@ def build_pdf_from_images(
                     "footer_text": footer_text,
                     "source_title": source_title,
                     "icon_boxes": composite_icon_boxes,
+                    "subtitle_overlays": subtitle_overlays,
                 }
             )
 
@@ -1124,10 +1182,24 @@ def build_pdf_from_images(
                 footer_text = spec["footer_text"]
                 source_title = spec["source_title"]
                 icon_boxes = spec.get("icon_boxes", [])
+                subtitle_overlays = spec.get("subtitle_overlays", [])
                 c.setPageSize((page_w, page_h))
                 draw_x = 0
                 draw_y = bar_height + (image_area_h - h)
                 c.drawImage(img, draw_x, draw_y, width=w, height=h)
+                for overlay in subtitle_overlays:
+                    panel_rect = overlay.get("panel_rect")
+                    text = overlay.get("text", "")
+                    if not panel_rect:
+                        continue
+                    px1, py1, px2, py2 = panel_rect
+                    pdf_panel_rect = (
+                        draw_x + float(px1),
+                        draw_y + float(h - py2),
+                        draw_x + float(px2),
+                        draw_y + float(h - py1),
+                    )
+                    _draw_selectable_subtitle_text(c, text, pdf_panel_rect)
                 for box_idx, icon_box in enumerate(icon_boxes):
                     if not icon_box:
                         continue
@@ -1342,6 +1414,48 @@ def split_existing_pdf_by_size(
     base, ext = os.path.splitext(output_pdf)
     outputs: List[str] = []
     for idx, page_indexes in enumerate(pages_per_part, 1):
+        out_path = f"{base}_part_{idx:03d}{ext}"
+        writer = PdfWriter()
+        if hasattr(writer, "clone_document_from_reader"):
+            # Preserve interactive form widgets by cloning full document first,
+            # then removing pages not belonging to this part.
+            writer.clone_document_from_reader(reader)
+            keep = set(page_indexes)
+            for pi in range(total_pages - 1, -1, -1):
+                if pi not in keep:
+                    writer.remove_page(pi)
+        else:
+            for pi in page_indexes:
+                writer.add_page(reader.pages[pi])
+            _copy_acroform_root(reader, writer)
+        if metadata:
+            writer.add_metadata(metadata)
+        with open(out_path, "wb") as f:
+            writer.write(f)
+        outputs.append(out_path)
+    return outputs
+
+
+def split_existing_pdf_by_page_count(
+    pdf_path: str,
+    output_pdf: str,
+    pages_per_part: int = 5,
+    metadata: Optional[dict] = None,
+) -> List[str]:
+    """Split an existing PDF into fixed page-count parts."""
+    ensure_pdf_merge_available()
+    per_part = max(1, int(pages_per_part))
+    reader = _safe_pdf_reader(pdf_path)
+    total_pages = len(reader.pages)
+    if total_pages == 0:
+        return [output_pdf]
+    if total_pages <= per_part:
+        return [output_pdf]
+
+    base, ext = os.path.splitext(output_pdf)
+    outputs: List[str] = []
+    for idx, start in enumerate(range(0, total_pages, per_part), 1):
+        page_indexes = list(range(start, min(start + per_part, total_pages)))
         out_path = f"{base}_part_{idx:03d}{ext}"
         writer = PdfWriter()
         if hasattr(writer, "clone_document_from_reader"):
