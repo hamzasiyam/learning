@@ -819,7 +819,7 @@ def export_images_as_png(
         last_img = start_page_number + group_indices[-1]
 
         if columns > 1:
-            footer = f"Photos {first_img}-{last_img} / {total_pages}"
+            footer = f"Frames {first_img}-{last_img} / {total_pages}"
         elif total_pages and total_pages > 0:
             footer = f"Page {first_img}/{total_pages}"
         else:
@@ -1137,7 +1137,7 @@ def build_pdf_from_images(
             last_img = start_page_number + group_indices[-1]
 
             if columns > 1:
-                footer_text = f"Photos {first_img}-{last_img} / {total_pages}"
+                footer_text = f"Frames {first_img}-{last_img} / {total_pages}"
             elif total_pages and total_pages > 0:
                 footer_text = f"Page {first_img}/{total_pages}"
             else:

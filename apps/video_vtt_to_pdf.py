@@ -241,8 +241,8 @@ class VttTimestampPdfApp(tk.Tk):
 
                 base_parent = os.path.dirname(os.path.abspath(output_pdf)) or os.getcwd()
                 os.makedirs(base_parent, exist_ok=True)
-                pdf_base = os.path.splitext(os.path.basename(output_pdf))[0] or "timestamp_frames"
-                run_dir_base = os.path.join(base_parent, f"{futils.safe_filename(pdf_base)}_output")
+                video_base_name = futils.safe_filename(os.path.splitext(os.path.basename(video_path))[0]) or "video"
+                run_dir_base = os.path.join(base_parent, video_base_name)
                 run_dir = futils.make_unique_output_dir(run_dir_base)
                 os.makedirs(run_dir, exist_ok=True)
 
@@ -329,7 +329,7 @@ class VttTimestampPdfApp(tk.Tk):
                     if self.stop_event.is_set():
                         raise RuntimeError("Stopped")
 
-                    split_target = os.path.join(run_dir, f"{futils.safe_filename(pdf_base)}.pdf")
+                    split_target = os.path.join(run_dir, f"{video_base_name}.pdf")
                     outputs = pdfm.split_existing_pdf_by_page_count(
                         combined_pdf_path,
                         split_target,
@@ -340,6 +340,16 @@ class VttTimestampPdfApp(tk.Tk):
                     if not existing_outputs:
                         shutil.copy2(combined_pdf_path, split_target)
                         existing_outputs = [split_target]
+                    renamed_outputs: List[str] = []
+                    for idx, old_path in enumerate(sorted(existing_outputs), 1):
+                        new_name = f"{video_base_name} Part {idx}.pdf"
+                        new_path = os.path.join(run_dir, new_name)
+                        if os.path.abspath(old_path) != os.path.abspath(new_path):
+                            if os.path.exists(new_path):
+                                os.remove(new_path)
+                            os.replace(old_path, new_path)
+                        renamed_outputs.append(new_path)
+                    existing_outputs = renamed_outputs
                 finally:
                     futils.cleanup_dir(temp_frames_root)
                     try:
