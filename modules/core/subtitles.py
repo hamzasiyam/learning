@@ -182,9 +182,9 @@ def parse_transcript_txt(path: str, video_duration_sec: Optional[float] = None) 
 
 
 def load_subtitle_file(path: str, video_duration_sec: Optional[float] = None) -> List[SubtitleCue]:
-    """Load cues from ``.vtt``, ``.webvtt``, or ``.txt``."""
+    """Load cues from ``.vtt``, ``.webvtt``, ``.srt``, or ``.txt``."""
     ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
-    if ext in ("vtt", "webvtt"):
+    if ext in ("vtt", "webvtt", "srt"):
         return parse_vtt(path)
     if ext == "txt":
         return parse_transcript_txt(path, video_duration_sec=video_duration_sec)

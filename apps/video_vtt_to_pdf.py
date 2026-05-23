@@ -36,6 +36,14 @@ def _resize_frame(frame, max_width: int):
     return cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
 
+def _format_timestamp(seconds: float) -> str:
+    """Format seconds as HH:MM:SS for display in subtitle icon area."""
+    total = max(0, int(round(seconds)))
+    hh, rem = divmod(total, 3600)
+    mm, ss = divmod(rem, 60)
+    return f"{hh:02d}:{mm:02d}:{ss:02d}"
+
+
 class VttTimestampPdfApp(tk.Tk):
     """Small GUI for creating a PDF from video frames at VTT cue starts."""
 
@@ -63,7 +71,7 @@ class VttTimestampPdfApp(tk.Tk):
 
         tk.Label(
             outer,
-            text="Create PDF from VTT timestamps",
+            text="Create PDF from transcript timestamps",
             font=("", 13, "bold"),
         ).pack(anchor="w", pady=(0, 8))
 
@@ -79,7 +87,7 @@ class VttTimestampPdfApp(tk.Tk):
         ).pack(anchor="w", pady=(0, 10))
 
         self._path_row(outer, "Video file:", self.video_var, self._pick_video)
-        self._path_row(outer, "VTT transcript:", self.vtt_var, self._pick_vtt)
+        self._path_row(outer, "Transcript file:", self.vtt_var, self._pick_vtt)
         self._path_row(outer, "Output PDF:", self.output_var, self._pick_output_pdf)
         layout_row = tk.Frame(outer)
         layout_row.pack(anchor="w", pady=(4, 6))
@@ -172,8 +180,14 @@ class VttTimestampPdfApp(tk.Tk):
 
     def _pick_vtt(self):
         path = filedialog.askopenfilename(
-            title="Select VTT Transcript",
-            filetypes=[("VTT Files", "*.vtt *.webvtt"), ("All Files", "*.*")],
+            title="Select Transcript File",
+            filetypes=[
+                ("Transcript Files", "*.vtt *.webvtt *.srt *.txt"),
+                ("WebVTT", "*.vtt *.webvtt"),
+                ("SubRip", "*.srt"),
+                ("Text", "*.txt"),
+                ("All Files", "*.*"),
+            ],
         )
         if path:
             self.vtt_var.set(path)
@@ -221,7 +235,7 @@ class VttTimestampPdfApp(tk.Tk):
             messagebox.showerror("Missing Video", "Please select a valid video file.")
             return
         if not vtt_path or not os.path.isfile(vtt_path):
-            messagebox.showerror("Missing VTT", "Please select a valid .vtt transcript file.")
+            messagebox.showerror("Missing Transcript", "Please select a valid transcript file (.vtt, .webvtt, .srt, .txt).")
             return
         if not output_pdf:
             messagebox.showerror("Missing Output", "Please choose where to save the output PDF.")
@@ -235,9 +249,9 @@ class VttTimestampPdfApp(tk.Tk):
 
         def worker():
             try:
-                cues = subm.parse_vtt(vtt_path)
+                cues = subm.load_subtitle_file(vtt_path)
                 if not cues:
-                    raise RuntimeError("No subtitle cues were found in the VTT file.")
+                    raise RuntimeError("No subtitle cues were found in the transcript file.")
 
                 base_parent = os.path.dirname(os.path.abspath(output_pdf)) or os.getcwd()
                 os.makedirs(base_parent, exist_ok=True)
@@ -252,6 +266,7 @@ class VttTimestampPdfApp(tk.Tk):
 
                 frame_paths: List[str] = []
                 subtitle_texts: List[str] = []
+                subtitle_timestamps: List[str] = []
                 skipped: List[Tuple[int, float]] = []
                 combined_pdf_path = os.path.join(run_dir, "__combined_unsplit.pdf")
                 try:
@@ -283,6 +298,7 @@ class VttTimestampPdfApp(tk.Tk):
                                 continue
                             frame_paths.append(out_path)
                             subtitle_texts.append(cue.text.strip())
+                            subtitle_timestamps.append(_format_timestamp(cue.start))
                     finally:
                         cap.release()
 
@@ -322,6 +338,7 @@ class VttTimestampPdfApp(tk.Tk):
                         per_row=2 if self.frames_per_row_var.get().strip() == "2" else 1,
                         image_source_titles=source_titles,
                         subtitle_texts=subtitle_texts,
+                        subtitle_timestamps=subtitle_timestamps,
                         include_subtitles=True,
                         include_subtitles_as_text=True,
                         progress_callback=on_pdf_progress,

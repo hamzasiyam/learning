@@ -383,6 +383,7 @@ def render_subtitle_panel(
     target_height: int,
     panel_width: Optional[int] = None,
     render_text: bool = True,
+    timestamp_text: str = "",
 ) -> np.ndarray:
     """Render subtitle text as a light panel image for side-by-side layout.
 
@@ -481,6 +482,9 @@ def render_subtitle_panel(
             y += th + line_gap
 
     header = "Subtitles"
+    ts = (timestamp_text or "").strip()
+    if ts:
+        header = f"{header} ({ts})"
     cv2.putText(
         panel,
         header,
@@ -538,6 +542,7 @@ def _learning_box_dims_from_panel_height(panel_height: int) -> Tuple[int, int]:
 def compose_frame_with_subtitle_and_icon_box(
     frame: np.ndarray,
     subtitle_text: str,
+    subtitle_timestamp: str = "",
 ) -> Tuple[np.ndarray, Optional[Tuple[int, int, int, int]], Optional[Tuple[int, int, int, int]]]:
     """Compose frame+subtitle panel and return icon-box rect in composed coords."""
     text = (subtitle_text or "").strip()
@@ -551,7 +556,13 @@ def compose_frame_with_subtitle_and_icon_box(
 
     h, w = frame.shape[:2]
     panel_w = max(300, min(700, int(w * 0.50)))
-    panel = render_subtitle_panel(text, target_height=h, panel_width=panel_w, render_text=False)
+    panel = render_subtitle_panel(
+        text,
+        target_height=h,
+        panel_width=panel_w,
+        render_text=False,
+        timestamp_text=subtitle_timestamp,
+    )
     box_x1, box_y1, box_x2, box_y2 = _subtitle_icon_box_rect(panel_w, h)
     composed = stitch_images_row([frame, panel])
     x_shift = w + MERGE_SEPARATOR_PX
@@ -635,9 +646,56 @@ def _draw_selectable_subtitle_text(
             break
         c.drawString(text_left, y, line)
         y -= (font_size + line_gap)
+def _draw_subtitle_notes_field(
+    c,
+    field_name: str,
+    panel_rect: Tuple[float, float, float, float],
+    icon_rect: Tuple[float, float, float, float],
+) -> None:
+    """Draw a fillable notes field aligned exactly to icon row."""
+    from reportlab.lib.colors import black, Color
+
+    x1, _y1, x2, _y2 = panel_rect
+    panel_w = max(1.0, x2 - x1)
+    pad_x = max(14.0, panel_w * 0.05)
+    icon_x1, icon_y1, _icon_x2, icon_y2 = icon_rect
+    icon_box_h = max(1.0, icon_y2 - icon_y1)
+
+    inter_gap = max(6.0, pad_x * 0.30)
+    note_x = x1 + pad_x
+    note_w = (icon_x1 - inter_gap) - note_x
+    note_w = max(60.0, note_w)
+    # Match icon box height exactly, aligned to the icon box vertical band.
+    note_h = max(18.0, icon_box_h)
+    note_y = icon_y1
+
+    c.acroForm.textfield(
+        name=field_name,
+        value="",
+        x=note_x,
+        y=note_y,
+        width=note_w,
+        height=note_h,
+        tooltip="Notes",
+        borderColor=black,
+        borderWidth=1,
+        borderStyle="solid",
+        fillColor=Color(1, 1, 1),
+        textColor=black,
+        forceBorder=True,
+        annotationFlags="print",
+        fieldFlags="multiline",
+        maxlen=5000,
+        fontName="Helvetica",
+        fontSize=max(10.0, min(14.0, note_h * 0.55)),
+    )
 
 
-def _draw_learning_radio_group(c, field_name: str, rect: Tuple[float, float, float, float]) -> None:
+def _draw_learning_radio_group(
+    c,
+    field_name: str,
+    rect: Tuple[float, float, float, float],
+) -> None:
     """Draw one 3-option icon panel (check/x/star) in the provided PDF rect."""
     from reportlab.lib.colors import Color
 
@@ -996,6 +1054,7 @@ def build_pdf_from_images(
     optimize_max_width: Optional[int] = None,
     optimize_quality: Optional[int] = None,
     subtitle_texts: Optional[List[str]] = None,
+    subtitle_timestamps: Optional[List[str]] = None,
     include_subtitles: bool = False,
     include_subtitles_as_text: bool = False,
 ):
@@ -1025,6 +1084,8 @@ def build_pdf_from_images(
     columns = max(1, int(columns))
     if subtitle_texts is not None and len(subtitle_texts) != len(image_paths):
         raise ValueError("subtitle_texts must match image_paths length")
+    if subtitle_timestamps is not None and len(subtitle_timestamps) != len(image_paths):
+        raise ValueError("subtitle_timestamps must match image_paths length")
     per_row = max(1, int(per_row)) if per_row else columns
     effective_max_width = int(optimize_max_width or OPTIMIZE_MAX_WIDTH)
     effective_quality = int(optimize_quality or OPTIMIZE_QUALITY)
@@ -1055,12 +1116,17 @@ def build_pdf_from_images(
             frame_icon_boxes: List[Optional[Tuple[int, int, int, int]]] = []
             frame_panel_rects: List[Optional[Tuple[int, int, int, int]]] = []
             frame_subtitles: List[str] = []
+            frame_timestamps: List[str] = []
             for img_idx, img_path in enumerate(group_paths):
                 global_idx = group_indices[img_idx]
                 subtitle = ""
                 if include_subtitles and subtitle_texts is not None:
                     subtitle = (subtitle_texts[global_idx] or "").strip()
                 frame_subtitles.append(subtitle)
+                ts_text = ""
+                if include_subtitles and subtitle_timestamps is not None:
+                    ts_text = (subtitle_timestamps[global_idx] or "").strip()
+                frame_timestamps.append(ts_text)
 
                 if optimize and os.path.exists(img_path):
                     frame = cv2.imread(img_path)
@@ -1076,7 +1142,11 @@ def build_pdf_from_images(
                         if apply_frame_watermark:
                             frame = add_frame_number_watermark(frame, frame_num)
                         if subtitle:
-                            frame, icon_box, panel_rect = compose_frame_with_subtitle_and_icon_box(frame, subtitle)
+                            frame, icon_box, panel_rect = compose_frame_with_subtitle_and_icon_box(
+                                frame,
+                                subtitle,
+                                subtitle_timestamp=ts_text,
+                            )
                         else:
                             icon_box = None
                             panel_rect = None
@@ -1090,7 +1160,11 @@ def build_pdf_from_images(
                     if apply_frame_watermark:
                         frame = add_frame_number_watermark(frame, frame_num)
                     if subtitle:
-                        frame, icon_box, panel_rect = compose_frame_with_subtitle_and_icon_box(frame, subtitle)
+                        frame, icon_box, panel_rect = compose_frame_with_subtitle_and_icon_box(
+                            frame,
+                            subtitle,
+                            subtitle_timestamp=ts_text,
+                        )
                     else:
                         icon_box = None
                         panel_rect = None
@@ -1148,12 +1222,13 @@ def build_pdf_from_images(
             w, h = img.getSize()
             subtitle_overlays = []
             if include_subtitles and include_subtitles_as_text:
-                for panel_rect, subtitle_text in zip(composite_panel_rects, frame_subtitles):
-                    if panel_rect and subtitle_text:
+                for panel_rect, subtitle_text, ts_text in zip(composite_panel_rects, frame_subtitles, frame_timestamps):
+                    if panel_rect and (subtitle_text or ts_text):
                         subtitle_overlays.append(
                             {
                                 "panel_rect": panel_rect,
                                 "text": subtitle_text,
+                                "timestamp": ts_text,
                             }
                         )
             page_specs.append(
@@ -1164,6 +1239,7 @@ def build_pdf_from_images(
                     "footer_text": footer_text,
                     "source_title": source_title,
                     "icon_boxes": composite_icon_boxes,
+                    "panel_rects": composite_panel_rects,
                     "subtitle_overlays": subtitle_overlays,
                 }
             )
@@ -1182,14 +1258,16 @@ def build_pdf_from_images(
                 footer_text = spec["footer_text"]
                 source_title = spec["source_title"]
                 icon_boxes = spec.get("icon_boxes", [])
+                panel_rects = spec.get("panel_rects", [])
                 subtitle_overlays = spec.get("subtitle_overlays", [])
                 c.setPageSize((page_w, page_h))
                 draw_x = 0
                 draw_y = bar_height + (image_area_h - h)
                 c.drawImage(img, draw_x, draw_y, width=w, height=h)
-                for overlay in subtitle_overlays:
+                for overlay_idx, overlay in enumerate(subtitle_overlays):
                     panel_rect = overlay.get("panel_rect")
                     text = overlay.get("text", "")
+                    ts_text = overlay.get("timestamp", "")
                     if not panel_rect:
                         continue
                     px1, py1, px2, py2 = panel_rect
@@ -1212,6 +1290,21 @@ def build_pdf_from_images(
                     )
                     field_name = f"learn_mark_p{page_idx + 1}_i{box_idx + 1}"
                     _draw_learning_radio_group(c, field_name, pdf_rect)
+                    panel_rect = panel_rects[box_idx] if box_idx < len(panel_rects) else None
+                    if panel_rect:
+                        px1, py1, px2, py2 = panel_rect
+                        pdf_panel_rect = (
+                            draw_x + float(px1),
+                            draw_y + float(h - py2),
+                            draw_x + float(px2),
+                            draw_y + float(h - py1),
+                        )
+                        _draw_subtitle_notes_field(
+                            c,
+                            field_name=f"notes_p{page_idx + 1}_i{box_idx + 1}",
+                            panel_rect=pdf_panel_rect,
+                            icon_rect=pdf_rect,
+                        )
                 c.setFillColor(black)
                 c.rect(0, 0, page_w, bar_height, fill=1, stroke=0)
                 c.setFillColorRGB(1, 1, 1)
